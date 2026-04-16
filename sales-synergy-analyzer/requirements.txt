@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+yfinance>=1.0
+anthropic
+httpx
+python-dotenv
+beautifulsoup4
+lxml
+pydantic
