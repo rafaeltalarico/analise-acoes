@@ -150,6 +150,14 @@ export interface StockAnalysis {
   peers: PeerData[];
   sources: string[];
   timestamp: string;
+  history: HistoryPoint[];
 }
+
+export interface HistoryPoint {
+  date: string;
+  close: number;
+  volume: number;
+}
+
 
 export type LoadingStep = 1 | 2 | 3 | 4 | 5;

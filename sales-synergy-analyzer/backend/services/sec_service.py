@@ -61,22 +61,41 @@ async def get_latest_8k(cik: str) -> Optional[Dict[str, Any]]:
             accession_nos = filings.get("accessionNumber", [])
             primary_docs = filings.get("primaryDocument", [])
             filing_dates = filings.get("filingDate", [])
+            items_list = filings.get("items", [])
+
+            first_8k = None  # fallback: primeiro 8-K encontrado
 
             for i, form in enumerate(forms):
-                if form == "8-K":
-                    acc_no = accession_nos[i].replace("-", "")
-                    primary_doc = primary_docs[i]
-                    filing_date = filing_dates[i]
-                    return {
-                        "cik": cik,
-                        "accession_no": acc_no,
-                        "primary_doc": primary_doc,
-                        "filing_date": filing_date,
-                    }
+                if form != "8-K":
+                    continue
+
+                filing = {
+                    "cik": cik,
+                    "accession_no": accession_nos[i].replace("-", ""),
+                    "primary_doc": primary_docs[i],
+                    "filing_date": filing_dates[i],
+                }
+
+                # Guarda o primeiro 8-K como fallback
+                if first_8k is None:
+                    first_8k = filing
+
+                # Preferência: 8-K com Item 2.02 (earnings release)
+                items_str = str(items_list[i]) if i < len(items_list) else ""
+                if "2.02" in items_str:
+                    return filing
+
+            # Nenhum 8-K com 2.02 encontrado — usa o mais recente
+            return first_8k
+
     except Exception:
         pass
 
     return None
+
+
+
+                     
 
 
 async def fetch_document_text(cik: str, accession_no: str, primary_doc: str) -> Optional[str]:

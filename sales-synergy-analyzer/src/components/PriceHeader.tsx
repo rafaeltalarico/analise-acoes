@@ -1,5 +1,6 @@
 import React from 'react';
-import type { StockAnalysis } from '../types/stock';
+import type { StockAnalysis, HistoryPoint } from '../types/stock';
+import { PriceChart } from './PriceChart';
 
 function fmt(v: number | null, decimals = 2): string {
   if (v == null) return '—';
@@ -70,6 +71,7 @@ export function PriceHeader({ data }: Props) {
           <span>52w Mín: ${fmt(price.week52_low)}</span>
           <span>52w Máx: ${fmt(price.week52_high)}</span>
         </div>
+        <PriceChart ticker={data.ticker} />
         <div className="relative h-2 bg-gray-200 rounded-full">
           <div
             className="absolute top-0 h-2 bg-blue-400 rounded-full"

@@ -396,6 +396,20 @@ async def get_stock_data(ticker: str) -> Dict[str, Any]:
     except Exception:
         pass
 
+    # Histórico de preços (1 ano, diário)
+    history = []
+    try:
+        hist = stock.history(period="1y")
+        for date, row in hist.iterrows():
+            history.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "close": round(float(row["Close"]), 2),
+                "volume": int(row["Volume"]),
+            })
+    except Exception:
+        pass
+
+
     return {
         "ticker": ticker.upper(),
         "company_name": info.get("shortName") or info.get("longName"),
@@ -410,4 +424,5 @@ async def get_stock_data(ticker: str) -> Dict[str, Any]:
         },
         "analysts": analysts_data,
         "raw_info": info,
+        "history": history,
     }

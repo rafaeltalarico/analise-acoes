@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 yfinance>=1.0
-anthropic
+openai
 httpx
 python-dotenv
 beautifulsoup4

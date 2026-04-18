@@ -1,17 +1,17 @@
 import os
 import json
 import re
-import anthropic
+from openai import OpenAI
 from typing import Optional, Dict, Any
 
-MODEL = "claude-haiku-4-5"
+MODEL = "gpt-4o"
 
 
-def get_client() -> Optional[anthropic.Anthropic]:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+def get_client() -> Optional[OpenAI]:
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return None
-    return anthropic.Anthropic(api_key=api_key)
+    return OpenAI(api_key=api_key)
 
 
 async def generate_earnings_summary(sec_text: str) -> Optional[Dict[str, Any]]:
@@ -41,15 +41,17 @@ Earnings release:
         import asyncio
         loop = asyncio.get_event_loop()
 
-        def call_claude():
-            message = client.messages.create(
+        def call_openAI():
+            response = client.chat.completions.create(
                 model=MODEL,
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}]
             )
-            return message.content[0].text
+            return response.choices[0].message.content
+        
+          
 
-        raw = await loop.run_in_executor(None, call_claude)
+        raw = await loop.run_in_executor(None, call_openAI)
 
         # Extract JSON from response
         match = re.search(r'\{[\s\S]*\}', raw)
@@ -91,15 +93,15 @@ Dados da empresa:
         import asyncio
         loop = asyncio.get_event_loop()
 
-        def call_claude():
-            message = client.messages.create(
+        def call_openAI():
+            response = client.chat.completions.create(
                 model=MODEL,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}]
             )
-            return message.content[0].text
+            return response.choices[0].message.content
 
-        raw = await loop.run_in_executor(None, call_claude)
+        raw = await loop.run_in_executor(None, call_openAI)
 
         match = re.search(r'\{[\s\S]*\}', raw)
         if match:
