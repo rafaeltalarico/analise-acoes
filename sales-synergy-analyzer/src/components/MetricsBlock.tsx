@@ -9,7 +9,9 @@ const BLOCK_LABELS: Record<string, string> = {
   qualidade_negocio: 'Qualidade do Negócio',
   saude_financeira: 'Saúde Financeira',
   crescimento: 'Crescimento',
-  preco_valor: 'Preço vs Valor',  
+  preco_valor: 'Preço vs Valor',
+  momentum_mercado: 'Momentum e Mercado',
+  comportamento_preco: 'Comportamento do Preço'  
 };
 
 const STATUS_CONFIG = {
@@ -59,10 +61,6 @@ function MetricBlock({
   if (!items || items.length === 0) return null;
   const label = BLOCK_LABELS[blockKey] || blockKey;
 
-  const positivos = items.filter(i => i.status === 'positivo').length;
-  const negativos = items.filter(i => i.status === 'negativo').length;
-  const total = items.length;
-
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
       <button
@@ -108,7 +106,7 @@ export function MetricsBlock({ metricsSummary }: Props) {
     );
   }
 
-  const BLOCK_ORDER = ['qualidade_negocio', 'saude_financeira', 'crescimento', 'preco_valor'] as const;
+  const BLOCK_ORDER = ['qualidade_negocio', 'saude_financeira', 'crescimento', 'preco_valor', 'momentum_mercado', 'comportamento_preco'] as const;
 
   const blocks = BLOCK_ORDER
     .map(key => ({ key, items: metricsSummary[key] }))

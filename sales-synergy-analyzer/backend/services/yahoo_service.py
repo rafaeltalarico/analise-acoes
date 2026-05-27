@@ -409,6 +409,55 @@ async def get_stock_data(ticker: str) -> Dict[str, Any]:
     except Exception:
         pass
 
+        # BLOCO — Price Behavior (para o Claude)
+    price_behavior = {}
+    try:
+        hist_5y = stock.history(period="5y")
+        if not hist_5y.empty:
+            current = float(hist_5y["Close"].iloc[-1])
+            
+            # Retornos
+            if len(hist_5y) >= 252:
+                price_1y_ago = float(hist_5y["Close"].iloc[-252])
+                price_behavior["return_1y"] = round((current / price_1y_ago - 1) * 100, 2)
+            if len(hist_5y) >= 756:
+                price_3y_ago = float(hist_5y["Close"].iloc[-756])
+                price_behavior["return_3y"] = round((current / price_3y_ago - 1) * 100, 2)
+            if len(hist_5y) >= 1260:
+                price_5y_ago = float(hist_5y["Close"].iloc[-1260])
+                price_behavior["return_5y"] = round((current / price_5y_ago - 1) * 100, 2)
+
+            # MM200
+            if len(hist_5y) >= 200:
+                mm200 = float(hist_5y["Close"].tail(200).mean())
+                price_behavior["mm200"] = round(mm200, 2)
+                price_behavior["price_vs_mm200_pct"] = round((current / mm200 - 1) * 100, 2)
+
+            # Posição no range 52 semanas
+            high_52w = safe_float(info.get("fiftyTwoWeekHigh"))
+            low_52w = safe_float(info.get("fiftyTwoWeekLow"))
+            if high_52w and low_52w and high_52w != low_52w:
+                price_behavior["position_52w_pct"] = round(
+                    (current - low_52w) / (high_52w - low_52w) * 100, 2
+                )
+
+            # Anos positivos nos últimos 5
+            hist_5y["year"] = hist_5y.index.year
+            yearly = hist_5y.groupby("year")["Close"].agg(["first", "last"])
+            yearly["positive"] = yearly["last"] > yearly["first"]
+            last_5_years = yearly.tail(5)
+            price_behavior["positive_years_last5"] = int(last_5_years["positive"].sum())
+            price_behavior["total_years_analyzed"] = len(last_5_years)
+
+            # Máxima histórica
+            all_time_high = float(hist_5y["Close"].max())
+            price_behavior["all_time_high_5y"] = round(all_time_high, 2)
+            price_behavior["distance_from_ath_pct"] = round(
+                (current / all_time_high - 1) * 100, 2
+            )
+    except Exception as e:
+        print(f"Erro ao calcular price behavior: {e}")
+
 
     return {
         "ticker": ticker.upper(),
@@ -421,6 +470,17 @@ async def get_stock_data(ticker: str) -> Dict[str, Any]:
             "profitability": profitability_data,
             "financial_strength": financial_strength_data,
             "growth": growth_data,
+            "price_behavior": price_behavior,
+            "analysts_summary": {
+                "price_target_mean": analysts_data["price_target"]["mean"],
+                "price_target_current": current_price,
+                "strong_buy": analysts_data["recommendations"]["strongBuy"],
+                "buy": analysts_data["recommendations"]["buy"],
+                "hold": analysts_data["recommendations"]["hold"],
+                "sell": analysts_data["recommendations"]["sell"],
+                "strong_sell": analysts_data["recommendations"]["strongSell"],
+                "recent_actions": analysts_data["recent_actions"][:3],
+            }
         },
         "analysts": analysts_data,
         "raw_info": info,

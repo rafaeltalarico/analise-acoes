@@ -174,6 +174,8 @@ export interface MetricsSummary {
   qualidade_negocio?: MetricItem[];
   saude_financeira?: MetricItem[];
   crescimento?: MetricItem[];
+  momentum_mercado?: MetricItem[];
+  comportamento_preco?: MetricItem[];
 }
 
 export type LoadingStep = 1 | 2 | 3 | 4 | 5;

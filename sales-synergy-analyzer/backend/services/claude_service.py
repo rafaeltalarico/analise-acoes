@@ -117,6 +117,19 @@ tendência clara e estar em zona de entrada favorável.
 Critérios: retorno em 1, 3 e 5 anos, posição no range de 52 semanas,
 distância da máxima histórica, preço vs média móvel de 200 dias,
 consistência (quantos anos fecharam positivos nos últimos 5), volatilidade anualizada.
+REGRA DE PONDERAÇÃO OBRIGATÓRIA:
+- A posição no range de 52 semanas NÃO deve ser analisada isoladamente.
+- Se o retorno em 1 ano for > 50%, uma posição acima de 85% no range indica
+  tendência forte em continuidade — não é sinal negativo.
+- Penalize posição alta no range APENAS se o retorno for baixo ou negativo,
+  indicando que o ativo está próximo da máxima sem momentum que justifique.
+- Priorize a consistência: retorno positivo em 3+ dos últimos 5 anos e
+  preço acima da MM200 são os dois critérios mais importantes do bloco.
+- Score alto (8-10): retorno 3Y > 50%, acima da MM200, 4-5 anos positivos,
+  tendência clara independente da posição no range.
+- Score médio (5-7): tendência presente mas inconsistente, ou abaixo da MM200.
+- Score baixo (1-4): tendência lateral ou de queda, abaixo da MM200,
+  ou posição alta no range COM retorno fraco.
 
 Retorne APENAS JSON válido no seguinte formato, sem justificativas, detalhes e texto adicional:
 {{
@@ -195,6 +208,16 @@ BENCHMARKS TÍPICOS POR MÉTRICA (ajuste conforme o setor {sector_str}):
 - Piotroski Score: positivo >=7, neutro 4-6, negativo <4
 - Receita YoY: positivo >15%, neutro 5-15%, negativo <5%
 - Lucro YoY: positivo >20%, neutro 5-20%, negativo <5%
+- Receita 3Y CAGR: positivo >10%, neutro 5-10%, negativo <5%
+- EPS Est. Próx. Ano: positivo >10% vs ano atual, neutro 0-10%, negativo <0%
+- Consenso Analistas: positivo maioria Buy, neutro maioria Hold, negativo maioria Sell
+- Upside implícito: positivo >15%, neutro 5-15%, negativo <5%
+- Retorno 1Y: positivo >20%, neutro 5-20%, negativo <5%
+- Retorno 3Y: positivo >50%, neutro 15-50%, negativo <15%
+- Posição 52W: positivo 40-80% (zona de entrada), neutro 85-95%, negativo >95% ou <20%
+- Anos positivos 5a: positivo 4-5, neutro 3, negativo 0-2. Importante: e retorno 1Y > 50%, posição acima de 85% é sinal de força,
+  não de risco — ajuste o status para positivo ou neutro conforme o contexto.
+
 
 Retorne APENAS JSON válido no formato abaixo, sem texto adicional:
 {{
@@ -222,7 +245,18 @@ Retorne APENAS JSON válido no formato abaixo, sem texto adicional:
     {{"label": "P/B", "value": "7,4x", "status": "negativo", "frase": "Acima da média do setor — ativo com prêmio de mercado"}},
     {{"label": "EV/EBITDA", "value": "17,0x", "status": "neutro", "frase": "Valuation moderado vs média do setor ~15x"}},
     {{"label": "P/S (TTM)", "value": "9,6x", "status": "negativo", "frase": "Investidor paga $9,6 por cada $1 de receita"}}
-  ]  
+  ],
+  "momentum_mercado": [
+    {{"label": "Consenso Analistas", "value": "Buy", "status": "positivo", "frase": "Maioria dos analistas recomenda compra"}},
+    {{"label": "Price Target Médio", "value": "$250", "status": "positivo", "frase": "Upside implícito de 20% em relação ao preço atual"}},
+    {{"label": "Upgrades Recentes", "value": "3 upgrades", "status": "positivo", "frase": "Tendência recente de upgrades por parte dos analistas"}},
+    {{"label": "Movimentações Recentes", "value": "3 upgrades", "status": "positivo", "frase": "Revisões recentes favoráveis — analistas mais otimistas"}}
+  ],
+    "comportamento_preco": [
+    {{"label": "Retorno 1 Ano", "value": "35%", "status": "positivo", "frase": "Desempenho forte no último ano"}},
+    {{"label": "Posição no Range 52 Semanas", "value": "80%", "status": "neutro", "frase": "Próximo da máxima, mas ainda com espaço para crescimento"}},
+    {{"label": "Distância da Máxima Histórica", "value": "20%", "status": "neutro", "frase": "Ativo está 20% abaixo da máxima histórica"}},
+    {{"label": "Preço vs Média Móvel 200d", "value": "+10%", "status": "positivo", "frase": "Preço está 10% acima da média móvel de longo prazo"}}  
 }}
 
 Dados da empresa (setor: {sector_str}):
