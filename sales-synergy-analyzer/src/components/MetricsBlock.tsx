@@ -14,17 +14,14 @@ const BLOCK_LABELS: Record<string, string> = {
 
 const STATUS_CONFIG = {
   positivo: {
-    dot: '#1D9E75',
     bg: '#EAF3DE',
     text: '#3B6D11',
   },
   neutro: {
-    dot: '#EF9F27',
     bg: '#FAEEDA',
     text: '#854F0B',
   },
   negativo: {
-    dot: '#E24B4A',
     bg: '#FCEBEB',
     text: '#A32D2D',
   },
@@ -35,11 +32,6 @@ function MetricRow({ item }: { item: MetricItem }) {
 
   return (
     <div className="flex items-start gap-3 py-3 border-b border-gray-100 last:border-0">
-      {/* Semáforo */}
-      <div
-        className="w-3 h-3 rounded-full flex-shrink-0 mt-1"
-        style={{ backgroundColor: config.dot }}
-      />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="text-sm font-medium text-gray-700">{item.label}</span>
@@ -71,13 +63,6 @@ function MetricBlock({
   const negativos = items.filter(i => i.status === 'negativo').length;
   const total = items.length;
 
-  const summaryColor =
-    positivos > total / 2
-      ? '#1D9E75'
-      : negativos > total / 2
-      ? '#E24B4A'
-      : '#EF9F27';
-
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
       <button
@@ -90,15 +75,14 @@ function MetricBlock({
             {items.map((item, i) => (
               <div
                 key={i}
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: STATUS_CONFIG[item.status]?.dot || '#ccc' }}
+                className="w-2 h-2 rounded-full"  
               />
             ))}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium" style={{ color: summaryColor }}>
-            {positivos}/{total} positivos
+          <span className="text-xs font-medium" >
+            
           </span>
           <span className="text-gray-400 text-sm">{open ? '▲' : '▼'}</span>
         </div>
