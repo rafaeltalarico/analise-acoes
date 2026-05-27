@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import type { ScoreDetail } from '../types/stock';
 
 const SCORE_LABELS: Record<string, string> = {
-  financial_strength: 'Solidez Financeira',
-  profitability: 'Lucratividade',
-  growth: 'Crescimento',
+  qualidade_negocio: 'Qualidade do Negócio',
+  saude_financeira: 'Saúde Financeira',
+  crescimento: 'Crescimento',
   valuation: 'Valuation',
-  momentum: 'Momentum',
+  momentum_mercado: 'Momentum e Mercado',
+  comportamento_preco: 'Comportamento do Preço'
 };
 
 function scoreColor(score: number): string {
@@ -82,7 +83,7 @@ export function ScoreCard({ scoreKey, detail }: Props) {
 
   return (
     <div
-      className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col items-center gap-2 cursor-pointer hover:shadow-md transition-shadow"
+      className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col items-center gap-2 hover:shadow-md transition-shadow"
       onClick={() => setExpanded(!expanded)}
     >
       <div className="text-sm font-semibold text-gray-600 text-center">{label}</div>
@@ -95,15 +96,14 @@ export function ScoreCard({ scoreKey, detail }: Props) {
 
       {expanded && detail.detalhes && Object.keys(detail.detalhes).length > 0 && (
         <div className="mt-3 w-full border-t border-gray-100 pt-3 space-y-1">
-          {Object.entries(detail.detalhes).map(([k, v]) => (
+          {Object.entries(SCORE_LABELS).map(([k, v]) => (
             <div key={k} className="text-xs text-gray-600">
-              <span className="font-medium text-gray-700">{k.replace(/_/g, ' ')}: </span>
-              {v}
+              <span className="font-medium text-gray-700">{v}: </span>
+              {detail.detalhes?.[k]}
             </div>
           ))}
         </div>
       )}
-      <div className="text-xs text-gray-300 mt-1">{expanded ? '▲ fechar' : '▼ detalhes'}</div>
     </div>
   );
 }

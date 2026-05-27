@@ -1,0 +1,13 @@
+iniciando a aplicação:
+
+frontend: não precisa de ambiente virtual ativado
+C:\Users\Jessica Pio\projetos\analise-acoes\sales-synergy-analyzer> npm run dev
+
+backend: terminal power shell
+- ativar o ambiente virtual:
+C:\Users\Jessica Pio\projetos\analise-acoes\sales-synergy-analyzer> .\venv\Scripts\Activate.ps1
+
+- rodar o backend:
+(venv) PS C:\Users\Jessica Pio\projetos\analise-acoes\sales-synergy-analyzer\backend> uvicorn main:app --reload --port 8000
+OU
+(venv) PS C:\Users\Jessica Pio\projetos\analise-acoes\sales-synergy-analyzer\backend> python -m uvicorn main:app --reload --port 8000

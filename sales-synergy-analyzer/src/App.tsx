@@ -10,7 +10,7 @@ import { EarningsSummary } from './components/EarningsSummary';
 import { AnalystBlock } from './components/AnalystBlock';
 import { PeersTable } from './components/PeersTable';
 
-const SCORE_KEYS = ['financial_strength', 'profitability', 'growth', 'valuation', 'momentum'] as const;
+const SCORE_KEYS = ['qualidade_negocio', 'saude_financeira', 'crescimento', 'valuation', 'momentum_mercado', 'comportamento_preco'] as const;
 
 export default function App() {
   const [loading, setLoading] = useState(false);
