@@ -19,11 +19,12 @@ export interface ScoreDetail {
 }
 
 export interface Scores {
-  financial_strength: ScoreDetail | null;
-  profitability: ScoreDetail | null;
-  growth: ScoreDetail | null;
+  qualidade_negocio: ScoreDetail | null;
+  saude_financeira: ScoreDetail | null;
+  crescimento: ScoreDetail | null;
   valuation: ScoreDetail | null;
-  momentum: ScoreDetail | null;
+  momentum_mercado: ScoreDetail | null;
+  comportamento_preco: ScoreDetail | null;
 }
 
 export interface ValuationMetrics {
@@ -145,6 +146,7 @@ export interface StockAnalysis {
   price: PriceData;
   scores: Scores | null;
   metrics: Metrics;
+  metrics_summary: MetricsSummary | null;
   analysts: Analysts;
   earnings_summary: EarningsSummary;
   peers: PeerData[];
@@ -159,5 +161,19 @@ export interface HistoryPoint {
   volume: number;
 }
 
+
+export interface MetricItem {
+  label: string;
+  value: string;
+  status: 'positivo' | 'neutro' | 'negativo';
+  frase: string;
+}
+
+export interface MetricsSummary {
+  preco_valor?: MetricItem[];
+  qualidade_negocio?: MetricItem[];
+  saude_financeira?: MetricItem[];
+  crescimento?: MetricItem[];
+}
 
 export type LoadingStep = 1 | 2 | 3 | 4 | 5;

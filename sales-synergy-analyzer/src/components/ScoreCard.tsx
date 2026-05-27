@@ -78,7 +78,15 @@ export function ScoreCard({ scoreKey, detail }: Props) {
       </div>
     );
   }
-
+  const scoreValue = typeof detail.score === 'number' ? detail.score : null;
+  if (scoreValue === null) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col items-center gap-2">
+        <div className="text-sm font-medium text-gray-500 text-center">{label}</div>
+        <div className="text-xs text-gray-400 text-center mt-2">Dados insuficientes</div>
+      </div>
+    );
+  }
   const color = scoreColor(detail.score);
 
   return (
@@ -87,12 +95,12 @@ export function ScoreCard({ scoreKey, detail }: Props) {
       onClick={() => setExpanded(!expanded)}
     >
       <div className="text-sm font-semibold text-gray-600 text-center">{label}</div>
-      <GaugeSVG score={detail.score} />
+      <GaugeSVG score={scoreValue} />
       <div className="text-4xl font-bold" style={{ color }}>
-        {detail.score}
-        <span className="text-lg text-gray-400">/10</span>
+        {scoreValue}
+        <span className="text-lg text-black-200">/10</span>
       </div>
-      <p className="text-xs text-gray-500 text-center leading-tight">{detail.justificativa}</p>
+      
 
       {expanded && detail.detalhes && Object.keys(detail.detalhes).length > 0 && (
         <div className="mt-3 w-full border-t border-gray-100 pt-3 space-y-1">

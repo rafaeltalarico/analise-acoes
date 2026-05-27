@@ -122,6 +122,7 @@ async def analyze(ticker: str):
         "price": yahoo_data.get("price", {}),
         "scores": claude_result.get("scores"),
         "metrics": metrics,
+        "metrics_summary": claude_result.get("metrics_summary"),
         "analysts": yahoo_data.get("analysts", {}),
         "earnings_summary": earnings_summary,
         "peers": peers_result if isinstance(peers_result, list) else [],

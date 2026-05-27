@@ -1,42 +1,113 @@
 import React, { useState } from 'react';
-import type { Metrics } from '../types/stock';
+import type { Metrics, MetricsSummary, MetricItem } from '../types/stock';
 
-function fmt(v: number | null | undefined, suffix = '', decimals = 2): string {
-  if (v == null) return '—';
-  return `${v.toFixed(decimals)}${suffix}`;
+interface Props {
+  metricsSummary?: MetricsSummary | null;
 }
 
-function fmtLarge(v: number | null | undefined): string {
-  if (v == null) return '—';
-  if (Math.abs(v) >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
-  if (Math.abs(v) >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-  if (Math.abs(v) >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
-  return `$${v.toFixed(0)}`;
-}
+const BLOCK_LABELS: Record<string, string> = {
+  qualidade_negocio: 'Qualidade do Negócio',
+  saude_financeira: 'Saúde Financeira',
+  crescimento: 'Crescimento',
+  preco_valor: 'Preço vs Valor',  
+};
 
-interface BlockProps {
-  title: string;
-  rows: [string, string][];
-}
+const STATUS_CONFIG = {
+  positivo: {
+    dot: '#1D9E75',
+    bg: '#EAF3DE',
+    text: '#3B6D11',
+  },
+  neutro: {
+    dot: '#EF9F27',
+    bg: '#FAEEDA',
+    text: '#854F0B',
+  },
+  negativo: {
+    dot: '#E24B4A',
+    bg: '#FCEBEB',
+    text: '#A32D2D',
+  },
+};
 
-function CollapsibleBlock({ title, rows }: BlockProps) {
-  const [open, setOpen] = useState(true);
+function MetricRow({ item }: { item: MetricItem }) {
+  const config = STATUS_CONFIG[item.status] || STATUS_CONFIG.neutro;
+
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
+    <div className="flex items-start gap-3 py-3 border-b border-gray-100 last:border-0">
+      {/* Semáforo */}
+      <div
+        className="w-3 h-3 rounded-full flex-shrink-0 mt-1"
+        style={{ backgroundColor: config.dot }}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-sm font-medium text-gray-700">{item.label}</span>
+          <span
+            className="text-sm font-semibold px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: config.bg, color: config.text }}
+          >
+            {item.value}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mt-0.5 leading-snug">{item.frase}</p>
+      </div>
+    </div>
+  );
+}
+
+function MetricBlock({
+  blockKey,
+  items,
+}: {
+  blockKey: string;
+  items: MetricItem[];
+}) {
+  const [open, setOpen] = useState(false);
+  if (!items || items.length === 0) return null;
+  const label = BLOCK_LABELS[blockKey] || blockKey;
+
+  const positivos = items.filter(i => i.status === 'positivo').length;
+  const negativos = items.filter(i => i.status === 'negativo').length;
+  const total = items.length;
+
+  const summaryColor =
+    positivos > total / 2
+      ? '#1D9E75'
+      : negativos > total / 2
+      ? '#E24B4A'
+      : '#EF9F27';
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
       <button
-        className="w-full flex justify-between items-center px-5 py-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
         onClick={() => setOpen(!open)}
       >
-        <span className="font-semibold text-gray-700">{title}</span>
-        <span className="text-gray-400 text-sm">{open ? '▲' : '▼'}</span>
+        <div className="flex items-center gap-3">
+          <span className="font-semibold text-gray-700 text-sm">{label}</span>
+          <div className="flex gap-1">
+            {items.map((item, i) => (
+              <div
+                key={i}
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: STATUS_CONFIG[item.status]?.dot || '#ccc' }}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium" style={{ color: summaryColor }}>
+            {positivos}/{total} positivos
+          </span>
+          <span className="text-gray-400 text-sm">{open ? '▲' : '▼'}</span>
+        </div>
       </button>
+
       {open && (
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2 px-5 py-4">
-          {rows.map(([label, value]) => (
-            <React.Fragment key={label}>
-              <span className="text-sm text-gray-500">{label}</span>
-              <span className="text-sm font-medium text-gray-900 text-right">{value}</span>
-            </React.Fragment>
+        <div className="px-5 pb-4">
+          {items.map((item, i) => (
+            <MetricRow key={i} item={item} />
           ))}
         </div>
       )}
@@ -44,56 +115,26 @@ function CollapsibleBlock({ title, rows }: BlockProps) {
   );
 }
 
-interface Props {
-  metrics: Metrics;
-}
+export function MetricsBlock({ metricsSummary }: Props) {
+  if (!metricsSummary) {
+    return (
+      <div className="text-sm text-gray-400 text-center py-6">
+        Resumo de indicadores indisponível.
+      </div>
+    );
+  }
 
-export function MetricsBlock({ metrics }: Props) {
-  const { valuation, profitability, financial_strength, growth } = metrics;
+  const BLOCK_ORDER = ['qualidade_negocio', 'saude_financeira', 'crescimento', 'preco_valor'] as const;
 
-  const valuationRows: [string, string][] = [
-    ['P/E Trailing', fmt(valuation.pe_trailing)],
-    ['P/E Forward', fmt(valuation.pe_forward)],
-    ['P/B', fmt(valuation.price_to_book)],
-    ['P/S (TTM)', fmt(valuation.price_to_sales)],
-    ['EV/EBITDA', fmt(valuation.ev_to_ebitda)],
-    ['PEG Ratio', fmt(valuation.peg_ratio)],
-  ];
-
-  const profitabilityRows: [string, string][] = [
-    ['Net Margin', fmt(profitability.net_margin, '%')],
-    ['Operating Margin', fmt(profitability.operating_margin, '%')],
-    ['FCF Margin', fmt(profitability.fcf_margin, '%')],
-    ['OCF Margin', fmt(profitability.ocf_margin, '%')],
-    ['ROE', fmt(profitability.roe, '%')],
-    ['ROA', fmt(profitability.roa, '%')],
-  ];
-
-  const strengthRows: [string, string][] = [
-    ['Caixa Total', fmtLarge(financial_strength.total_cash)],
-    ['Dívida Total', fmtLarge(financial_strength.total_debt)],
-    ['Cash-to-Debt', fmt(financial_strength.cash_to_debt)],
-    ['Debt/Equity', fmt(financial_strength.debt_to_equity)],
-    ['Current Ratio', fmt(financial_strength.current_ratio)],
-    ['Quick Ratio', fmt(financial_strength.quick_ratio)],
-    ['Piotroski F-Score', financial_strength.piotroski_score != null ? `${financial_strength.piotroski_score}/9` : '—'],
-  ];
-
-  const growthRows: [string, string][] = [
-    ['Receita YoY', fmt(growth.revenue_growth_yoy, '%')],
-    ['Lucro YoY', fmt(growth.earnings_growth_yoy, '%')],
-    ['Receita 3Y CAGR', fmt(growth.revenue_growth_3y, '%')],
-    ['EPS 3Y CAGR', fmt(growth.eps_growth_3y, '%')],
-    ['EPS Est. Próx. Ano', growth.eps_estimate_next_year != null ? `$${growth.eps_estimate_next_year.toFixed(2)}` : '—'],
-    ['Receita Est. Próx. Ano', fmtLarge(growth.revenue_estimate_next_year)],
-  ];
+  const blocks = BLOCK_ORDER
+    .map(key => ({ key, items: metricsSummary[key] }))
+    .filter(({ items }) => Array.isArray(items) && (items?.length ?? 0) > 0);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-      <CollapsibleBlock title="Valuation" rows={valuationRows} />
-      <CollapsibleBlock title="Lucratividade" rows={profitabilityRows} />
-      <CollapsibleBlock title="Solidez Financeira" rows={strengthRows} />
-      <CollapsibleBlock title="Crescimento" rows={growthRows} />
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+      {blocks.map(({ key, items }) => (
+        <MetricBlock key={key} blockKey={key} items={items as MetricItem[]} />
+      ))}
     </div>
   );
 }

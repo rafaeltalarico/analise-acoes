@@ -135,7 +135,7 @@ export default function App() {
             {/* Section 3: Raw metrics */}
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-gray-700 mb-4">Indicadores</h2>
-              <MetricsBlock metrics={data.metrics} />
+              <MetricsBlock metricsSummary={data.metrics_summary} />
             </div>
 
             {/* Section 4: Earnings summary */}
