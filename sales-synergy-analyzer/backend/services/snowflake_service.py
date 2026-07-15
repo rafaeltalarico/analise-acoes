@@ -20,11 +20,11 @@ FUTURE_ROE_THRESHOLD = 0.20
 
 HIGH_ROE_THRESHOLD = 0.20
 
-DEBT_EQUITY_SATISFACTORY = 0.40
+DEBT_EQUITY_SATISFACTORY = 1.0
 DEBT_COVERAGE_MIN = 0.20
 INTEREST_COVERAGE_MIN = 5.0
 
-NOTABLE_DIVIDEND_YIELD_MIN = 0.015
+NOTABLE_DIVIDEND_YIELD_MIN = 0.010
 HIGH_DIVIDEND_YIELD_MIN = 0.04
 PAYOUT_RATIO_MAX = 0.75
 
@@ -146,7 +146,7 @@ def compute_value_checks(
     # Aproximação: usamos o mesmo grupo de peers (yf.Sector) tanto para "vs Peers"
     # quanto para "vs Industry" — sem uma base de dados de indústria própria.
     peer_pes = [p.get("pe_trailing") for p in peers if p.get("pe_trailing")]
-    peer_avg_pe = sum(peer_pes) / len(peer_pes) if peer_pes else None
+    peer_avg_pe = sum(peer_pes) / len(peer_pes) if len(peer_pes) >= 2 else None
 
     pe_vs_peers = None
     if pe_trailing and peer_avg_pe:
@@ -158,7 +158,7 @@ def compute_value_checks(
 
     pe_vs_fair_ratio = None
     if peg is not None:
-        pe_vs_fair_ratio = peg < 1.0
+        pe_vs_fair_ratio = peg < 2.0
 
     analyst_forecast = None
     if target_mean and price:
@@ -204,7 +204,7 @@ def compute_value_checks(
             "pe_vs_fair_ratio",
             "P/E vs Fair Ratio",
             pe_vs_fair_ratio,
-            f"PEG de {peg:.2f} ({'abaixo' if pe_vs_fair_ratio else 'acima'} de 1,0)" if peg is not None else "PEG não disponível",
+            f"PEG de {peg:.2f} ({'abaixo' if pe_vs_fair_ratio else 'acima'} de 2,0)" if peg is not None else "PEG não disponível",
         ),
         check(
             "analyst_forecast",
@@ -390,21 +390,37 @@ def compute_health_checks(info: Dict[str, Any], balance_sheet: pd.DataFrame, inc
     current_assets = get_row(balance_sheet, ["Current Assets", "TotalCurrentAssets"], 0)
     current_liab = get_row(balance_sheet, ["Current Liabilities", "TotalCurrentLiabilities"], 0)
     total_liab = get_row(balance_sheet, ["Total Liabilities Net Minority Interest", "TotalLiab"], 0)
+    total_assets = get_row(balance_sheet, ["Total Assets", "TotalAssets"], 0)
+
+    sector = info.get("sector", "")
+    is_financial = sector in ("Financial Services", "Financial")
 
     short_term_liabilities = None
-    if current_ratio is not None:
+    if is_financial:
+        # Banks are assessed on total assets vs total liabilities instead of current ratio
+        if total_assets is not None and total_liab is not None:
+            short_term_liabilities = total_assets > total_liab
+    elif current_ratio is not None:
         short_term_liabilities = current_ratio > 1.0
     elif current_assets is not None and current_liab is not None:
         short_term_liabilities = current_assets > current_liab
 
     long_term_liabilities = None
-    if current_assets is not None and current_liab is not None and total_liab is not None:
+    if is_financial:
+        # For banks, evaluate whether total assets exceed total liabilities
+        if total_assets is not None and total_liab is not None:
+            long_term_liabilities = total_assets > total_liab
+    elif current_assets is not None and current_liab is not None and total_liab is not None:
         non_current_liab = total_liab - current_liab
         working_capital = current_assets - current_liab
         long_term_liabilities = working_capital > non_current_liab or non_current_liab <= 0
 
     debt_level = None
-    if debt_to_equity is not None:
+    if is_financial:
+        # High D/E is structural for banks; use total assets vs total liabilities
+        if total_assets is not None and total_liab is not None:
+            debt_level = total_assets > total_liab
+    elif debt_to_equity is not None:
         de_ratio = debt_to_equity / 100 if debt_to_equity > 5 else debt_to_equity
         debt_level = de_ratio < DEBT_EQUITY_SATISFACTORY
     if debt_level is None and total_cash is not None and total_debt is not None:
@@ -477,6 +493,15 @@ def compute_dividend_checks(info: Dict[str, Any], dividends: pd.Series) -> Dict[
     dividend_yield = safe_float(info.get("dividendYield"))
     if dividend_yield and dividend_yield > 1:
         dividend_yield = dividend_yield / 100
+
+    # Cross-validate yield: yfinance sometimes returns an inflated value (e.g. 0.24 instead of 0.0024).
+    # If the implied yield from dividendRate/price differs by more than 10×, trust the calculated one.
+    dividend_rate = safe_float(info.get("dividendRate"))
+    price_for_yield = safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
+    if dividend_yield and dividend_rate and price_for_yield and price_for_yield > 0:
+        calculated_yield = dividend_rate / price_for_yield
+        if calculated_yield > 0 and dividend_yield / calculated_yield > 10:
+            dividend_yield = calculated_yield
 
     notable_dividend = dividend_yield is not None and dividend_yield >= NOTABLE_DIVIDEND_YIELD_MIN
 
