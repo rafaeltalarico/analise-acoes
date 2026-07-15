@@ -17,9 +17,9 @@ const AXES = [
 // stays inside the dark circle. Derived from: BG_R > sqrt((LABEL_R*cos+textW)² + (LABEL_R*sin)²)
 const SIZE    = 340;
 const CENTER  = SIZE / 2;   // 170
-const MAX_R   = 90;         // outermost grid ring
-const BG_R    = 160;        // dark circle radius
-const LABEL_R = 114;        // label orbit — well inside BG_R
+const MAX_R   = 160;         // outermost grid ring
+const BG_R    = 200;        // dark circle radius
+const LABEL_R = 100;        // label orbit — well inside BG_R
 const N       = AXES.length;
 
 const LIME      = '#bed12a';
@@ -66,9 +66,9 @@ export function SnowflakeChart({ data }: Props) {
 
   return (
     <svg
-      width={SIZE}
-      height={SIZE}
+      width="100%"
       viewBox={`0 0 ${SIZE} ${SIZE}`}
+      preserveAspectRatio="xMidYMid meet"
       style={{ display: 'block' }}
     >
       <defs>
