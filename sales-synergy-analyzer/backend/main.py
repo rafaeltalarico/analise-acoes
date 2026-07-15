@@ -11,6 +11,7 @@ from services.yahoo_service import get_stock_data
 from services.peers_service import get_peers_data
 from services.sec_service import get_earnings_release
 from services.claude_service import run_claude_analysis
+from services.snowflake_service import get_snowflake_analysis
 
 app = FastAPI(title="Stock Analysis API", version="1.0.0")
 
@@ -73,15 +74,26 @@ async def analyze(ticker: str):
     if isinstance(sec_result, Exception):
         sec_result = {"sec_available": False}
 
-    # Step 4: Claude — scores + earnings summary in parallel
+    # Step 4: Claude (scores + resumo) e Snowflake (checks determinísticos) em paralelo
     sec_text = sec_result.get("text") if sec_result.get("sec_available") else None
+    peers_list = peers_result if isinstance(peers_result, list) else []
     try:
-        claude_result = await asyncio.wait_for(
-            run_claude_analysis(metrics, sector, sec_text),
+        claude_result, snowflake_result = await asyncio.wait_for(
+            asyncio.gather(
+                run_claude_analysis(metrics, sector, sec_text),
+                get_snowflake_analysis(ticker, peers_list),
+                return_exceptions=True,
+            ),
             timeout=STEP_TIMEOUT,
         )
-    except (asyncio.TimeoutError, Exception):
+    except asyncio.TimeoutError:
         claude_result = {"scores": None, "earnings": None}
+        snowflake_result = None
+
+    if isinstance(claude_result, Exception):
+        claude_result = {"scores": None, "earnings": None}
+    if isinstance(snowflake_result, Exception):
+        snowflake_result = None
 
     # Build sources list
     sources = ["Yahoo Finance"]
@@ -126,6 +138,7 @@ async def analyze(ticker: str):
         "analysts": yahoo_data.get("analysts", {}),
         "earnings_summary": earnings_summary,
         "peers": peers_result if isinstance(peers_result, list) else [],
+        "snowflake": snowflake_result,
         "sources": sources,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
