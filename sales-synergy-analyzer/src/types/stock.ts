@@ -138,6 +138,29 @@ export interface PeerData {
   beta: number | null;
 }
 
+export interface SnowflakeCheck {
+  key: string;
+  label: string;
+  passed: boolean | null;
+  detail: string;
+}
+
+export interface SnowflakeGroup {
+  score: number;
+  max: number;
+  evaluated: number;
+  checks: SnowflakeCheck[];
+}
+
+export interface SnowflakeAnalysis {
+  value: SnowflakeGroup;
+  future: SnowflakeGroup;
+  past: SnowflakeGroup;
+  health: SnowflakeGroup;
+  dividend: SnowflakeGroup;
+  management: SnowflakeGroup;
+}
+
 export interface StockAnalysis {
   ticker: string;
   company_name: string | null;
@@ -150,6 +173,7 @@ export interface StockAnalysis {
   analysts: Analysts;
   earnings_summary: EarningsSummary;
   peers: PeerData[];
+  snowflake: SnowflakeAnalysis | null;
   sources: string[];
   timestamp: string;
   history: HistoryPoint[];
