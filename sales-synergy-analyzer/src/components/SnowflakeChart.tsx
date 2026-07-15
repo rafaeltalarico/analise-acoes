@@ -13,15 +13,17 @@ const AXES = [
   { key: 'dividend' as const, label: 'DIVIDEND' },
 ];
 
-const SIZE     = 340;
-const CENTER   = SIZE / 2;   // 170
-const MAX_R    = 88;
-const BG_R     = 118;
-const LABEL_R  = 104;
-const N        = AXES.length;
+// BG_R=160 is large enough that all label text (including "DIVIDEND" at end-anchor)
+// stays inside the dark circle. Derived from: BG_R > sqrt((LABEL_R*cos+textW)² + (LABEL_R*sin)²)
+const SIZE    = 340;
+const CENTER  = SIZE / 2;   // 170
+const MAX_R   = 90;         // outermost grid ring
+const BG_R    = 160;        // dark circle radius
+const LABEL_R = 114;        // label orbit — well inside BG_R
+const N       = AXES.length;
 
 const LIME      = '#bed12a';
-const LIME_DIM  = 'rgba(190,209,42,0.78)';
+const LIME_DIM  = 'rgba(190,209,42,0.80)';
 const DARK_BG   = '#191c2b';
 const DARK_RING = '#363b55';
 const GRID      = '#252a3d';
@@ -39,18 +41,16 @@ function labelAnchor(idx: number): 'start' | 'middle' | 'end' {
   return 'middle';
 }
 
-// Invisible pie-slice hover zone for each axis
 function sectorPath(i: number): string {
   const half = Math.PI / N;
-  const angle = (2 * Math.PI * i) / N - Math.PI / 2;
-  const a1 = angle - half;
-  const a2 = angle + half;
-  const r = BG_R;
-  const x1 = (CENTER + r * Math.cos(a1)).toFixed(2);
-  const y1 = (CENTER + r * Math.sin(a1)).toFixed(2);
-  const x2 = (CENTER + r * Math.cos(a2)).toFixed(2);
-  const y2 = (CENTER + r * Math.sin(a2)).toFixed(2);
-  return `M ${CENTER},${CENTER} L ${x1},${y1} A ${r},${r} 0 0,1 ${x2},${y2} Z`;
+  const a = (2 * Math.PI * i) / N - Math.PI / 2;
+  const a1 = a - half;
+  const a2 = a + half;
+  const x1 = (CENTER + BG_R * Math.cos(a1)).toFixed(2);
+  const y1 = (CENTER + BG_R * Math.sin(a1)).toFixed(2);
+  const x2 = (CENTER + BG_R * Math.cos(a2)).toFixed(2);
+  const y2 = (CENTER + BG_R * Math.sin(a2)).toFixed(2);
+  return `M ${CENTER},${CENTER} L ${x1},${y1} A ${BG_R},${BG_R} 0 0,1 ${x2},${y2} Z`;
 }
 
 export function SnowflakeChart({ data }: Props) {
@@ -63,14 +63,6 @@ export function SnowflakeChart({ data }: Props) {
 
   const pts  = ratios.map((r, i) => polar(r * MAX_R, i));
   const poly = pts.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
-
-  const totalScore = AXES.reduce((s, { key }) => s + data[key].score, 0);
-  const totalMax   = AXES.reduce((s, { key }) => s + data[key].max, 0);
-
-  const activeLabel = hovered !== null ? AXES[hovered].label : 'TOTAL';
-  const activeScore = hovered !== null
-    ? `${data[AXES[hovered].key].score}/${data[AXES[hovered].key].max}`
-    : `${totalScore}/${totalMax}`;
 
   return (
     <svg
@@ -91,22 +83,24 @@ export function SnowflakeChart({ data }: Props) {
           <stop offset="0%"   stopColor="#22273d" />
           <stop offset="100%" stopColor={DARK_BG} />
         </radialGradient>
-        <radialGradient id="sf-center" cx="50%" cy="50%" r="50%">
-          <stop offset="0%"   stopColor="#191c2b" stopOpacity="1" />
-          <stop offset="100%" stopColor="#191c2b" stopOpacity="0.6" />
-        </radialGradient>
       </defs>
 
-      {/* ── Background circle ── */}
+      {/* ── Dark circular background ── */}
       <circle cx={CENTER} cy={CENTER} r={BG_R} fill="url(#sf-bg)" />
       <circle cx={CENTER} cy={CENTER} r={BG_R} fill="none" stroke={DARK_RING} strokeWidth="2" />
 
+      {/* ── Hovered sector: subtle lime tint ── */}
+      {hovered !== null && (
+        <path
+          d={sectorPath(hovered)}
+          fill="rgba(190,209,42,0.06)"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
+
       {/* ── Concentric grid rings ── */}
       {[0.2, 0.4, 0.6, 0.8, 1.0].map(lv => (
-        <circle
-          key={lv}
-          cx={CENTER} cy={CENTER}
-          r={lv * MAX_R}
+        <circle key={lv} cx={CENTER} cy={CENTER} r={lv * MAX_R}
           fill="none"
           stroke={lv === 1.0 ? '#2e3450' : GRID}
           strokeWidth={lv === 1.0 ? 1.5 : 1}
@@ -119,15 +113,14 @@ export function SnowflakeChart({ data }: Props) {
         const active = hovered === i;
         return (
           <line key={i}
-            x1={CENTER} y1={CENTER}
-            x2={e.x}    y2={e.y}
+            x1={CENTER} y1={CENTER} x2={e.x} y2={e.y}
             stroke={active ? SPOKE_HL : GRID}
-            strokeWidth={active ? 1.5 : 1}
+            strokeWidth={active ? 2 : 1}
           />
         );
       })}
 
-      {/* ── Data polygon with glow ── */}
+      {/* ── Data polygon with lime glow ── */}
       <polygon
         points={poly}
         fill={LIME_DIM}
@@ -142,46 +135,19 @@ export function SnowflakeChart({ data }: Props) {
       {pts.map((p, i) => (
         <g key={i} style={{ pointerEvents: 'none' }}>
           {hovered === i && (
-            <circle cx={p.x} cy={p.y} r="8" fill={LIME} opacity="0.25" />
+            <circle cx={p.x} cy={p.y} r="9" fill={LIME} opacity="0.22" />
           )}
           <circle
             cx={p.x} cy={p.y}
             r={hovered === i ? 5 : 3.5}
-            fill={LIME}
-            stroke={DARK_BG}
-            strokeWidth="1.5"
+            fill={LIME} stroke={DARK_BG} strokeWidth="1.5"
           />
         </g>
       ))}
 
-      {/* ── Axis labels ── */}
-      {AXES.map(({ label }, i) => {
-        const p = polar(LABEL_R, i);
-        const active = hovered === i;
-        return (
-          <text
-            key={i}
-            x={p.x} y={p.y}
-            textAnchor={labelAnchor(i)}
-            dominantBaseline="middle"
-            fontSize={active ? '10' : '9'}
-            fontWeight="700"
-            fill={active ? LIME : 'rgba(255,255,255,0.8)'}
-            style={{
-              fontFamily: 'system-ui,-apple-system,sans-serif',
-              letterSpacing: '0.9px',
-              pointerEvents: 'none',
-            }}
-          >
-            {label}
-          </text>
-        );
-      })}
-
-      {/* ── Transparent hover zones (pie slices) ── */}
+      {/* ── Transparent hover zones (pie slices over full circle) ── */}
       {AXES.map((_, i) => (
-        <path
-          key={i}
+        <path key={i}
           d={sectorPath(i)}
           fill="transparent"
           onMouseEnter={() => setHovered(i)}
@@ -190,28 +156,43 @@ export function SnowflakeChart({ data }: Props) {
         />
       ))}
 
-      {/* ── Center score display ── */}
-      <circle cx={CENTER} cy={CENTER} r="28" fill="url(#sf-center)" style={{ pointerEvents: 'none' }} />
-      <text
-        x={CENTER} y={CENTER - 9}
-        textAnchor="middle"
-        fontSize="7"
-        fontWeight="700"
-        fill={hovered !== null ? 'rgba(190,209,42,0.7)' : 'rgba(255,255,255,0.35)'}
-        style={{ fontFamily: 'system-ui,-apple-system,sans-serif', letterSpacing: '1px', pointerEvents: 'none' }}
-      >
-        {activeLabel}
-      </text>
-      <text
-        x={CENTER} y={CENTER + 10}
-        textAnchor="middle"
-        fontSize="17"
-        fontWeight="700"
-        fill={hovered !== null ? LIME : 'rgba(255,255,255,0.65)'}
-        style={{ fontFamily: 'system-ui,-apple-system,sans-serif', pointerEvents: 'none' }}
-      >
-        {activeScore}
-      </text>
+      {/* ── Axis labels: shift up + show score below on hover ── */}
+      {AXES.map(({ label }, i) => {
+        const p   = polar(LABEL_R, i);
+        const anc = labelAnchor(i);
+        const act = hovered === i;
+        const g   = data[AXES[i].key];
+        return (
+          <g key={i} style={{ pointerEvents: 'none' }}>
+            <text
+              x={p.x}
+              y={act ? p.y - 7 : p.y}
+              textAnchor={anc}
+              dominantBaseline="middle"
+              fontSize="9"
+              fontWeight="700"
+              fill={act ? LIME : 'rgba(255,255,255,0.82)'}
+              style={{ fontFamily: 'system-ui,-apple-system,sans-serif', letterSpacing: '0.9px' }}
+            >
+              {label}
+            </text>
+            {act && (
+              <text
+                x={p.x}
+                y={p.y + 7}
+                textAnchor={anc}
+                dominantBaseline="middle"
+                fontSize="10"
+                fontWeight="700"
+                fill={LIME}
+                style={{ fontFamily: 'system-ui,-apple-system,sans-serif' }}
+              >
+                {g.score}/{g.max}
+              </text>
+            )}
+          </g>
+        );
+      })}
     </svg>
   );
 }
