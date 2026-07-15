@@ -113,7 +113,7 @@ export default function App() {
               <div className="mt-8">
                 <h2 className="text-lg font-semibold text-gray-700 mb-6">Análise Snowflake</h2>
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-                  <div className="lg:col-span-2 border border-gray-200 rounded-xl p-5 flex flex-col items-center">
+                  <div className="lg:col-span-2 flex items-center justify-center py-2">
                     <SnowflakeChart data={data.snowflake} />
                   </div>
                   <div className="lg:col-span-3">
