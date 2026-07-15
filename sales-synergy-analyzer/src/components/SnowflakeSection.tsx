@@ -7,10 +7,10 @@ interface Props {
 
 const SECTIONS = [
   { key: 'value'    as const, label: 'Valuation',           color: 'blue'   },
-  { key: 'future'   as const, label: 'Crescimento Futuro',  color: 'green'  },
-  { key: 'past'     as const, label: 'Performance Passada', color: 'purple' },
-  { key: 'health'   as const, label: 'Saúde Financeira',    color: 'orange' },
-  { key: 'dividend' as const, label: 'Dividendos',          color: 'pink'   },
+  { key: 'future'   as const, label: 'Future',  color: 'green'  },
+  { key: 'past'     as const, label: 'Past', color: 'purple' },
+  { key: 'health'   as const, label: 'Health',    color: 'orange' },
+  { key: 'dividend' as const, label: 'Dividends',          color: 'pink'   },
 ] as const;
 
 const COLORS: Record<string, { header: string; border: string; badge: string; text: string }> = {
@@ -84,36 +84,6 @@ export function SnowflakeSection({ data }: Props) {
       {SECTIONS.map(({ key, label, color }) => (
         <Panel key={key} label={label} group={data[key]} color={color} />
       ))}
-
-      {/* Management — fora do pentágono, sem barra de cor */}
-      <div className="rounded-xl border border-gray-200 overflow-hidden">
-        <button
-          className="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 hover:opacity-90 transition text-left"
-          onClick={() => setMgmtOpen(o => !o)}
-        >
-          <span className="text-sm font-semibold text-gray-700 w-40 shrink-0">Gestão</span>
-          <ScoreBar score={data.management.score} max={data.management.max} />
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full shrink-0 bg-gray-200 text-gray-700">
-            {data.management.score}/{data.management.max}
-          </span>
-          <span className="text-xs text-gray-500 shrink-0">{mgmtOpen ? '▲' : '▼'}</span>
-        </button>
-        {mgmtOpen && (
-          <div className="divide-y divide-gray-100">
-            {data.management.checks.map((c: SnowflakeCheck) => (
-              <div key={c.key} className="flex items-start gap-3 px-4 py-3 bg-white">
-                <div className="mt-0.5 shrink-0 w-5 text-center">
-                  <CheckIcon passed={c.passed} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800">{c.label}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{c.detail}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

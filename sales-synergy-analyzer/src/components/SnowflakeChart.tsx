@@ -5,13 +5,13 @@ import type { SnowflakeAnalysis } from '../types/stock';
 // § Geometry constants
 // ─────────────────────────────────────────────────────────────────────────────
 const N    = 5;
-const SIZE = 300;
+const SIZE = 330;
 const CX   = SIZE / 2;   // 150
 const CY   = SIZE / 2;   // 150
 const HALF = SIZE / 2;   // 150
 
-const BG_R    = HALF * 0.920;  // 138
-const MAX_R   = HALF * 0.520;  // 78
+const BG_R    = HALF * 0.970;  // 138
+const MAX_R   = HALF * 0.620;  // 78
 const LABEL_R = HALF * 0.633;  // 95
 
 // ─────────────────────────────────────────────────────────────────────────────

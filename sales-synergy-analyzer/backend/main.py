@@ -79,8 +79,7 @@ async def analyze(ticker: str):
         "future": "Crescimento Futuro",
         "past": "Desempenho Passado",
         "health": "Saúde Financeira",
-        "dividend": "Dividendos",
-        "management": "Gestão"
+        "dividend": "Dividendos"
     }
     
     print("\n📊 Processando categorias...")
