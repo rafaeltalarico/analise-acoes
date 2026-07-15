@@ -621,6 +621,19 @@ async def get_snowflake_analysis(
     ticker: str,
     peers: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    if not peers:
+        print(f"Aviso: Nenhum peer encontrado para {ticker}, usando dados isolados")
+        # Cria um peer dummy com dados do próprio ticker
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            peers = [{
+                "symbol": ticker,
+                "pe_trailing": safe_float(info.get("trailingPE")),
+                "earnings_growth": safe_float(info.get("earningsGrowth")),
+            }]
+        except:
+            peers = []
     stock = yf.Ticker(ticker)
     info = stock.info
 
@@ -673,3 +686,85 @@ async def get_snowflake_analysis(
         "dividend": dividend,
         "management": management,
     }
+# Adicione no final do arquivo snowflake_service.py
+
+# Adicione no final do arquivo
+
+async def get_peers(ticker: str) -> List[Dict[str, Any]]:
+    """
+    Busca empresas do mesmo setor para comparação
+    Usa fallback com lista pré-definida para evitar 403
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        sector = info.get("sector")
+        if not sector:
+            print(f"Setor não encontrado para {ticker}")
+            return []
+        
+        print(f"Buscando peers para {ticker} no setor: {sector}")
+        
+        # Usa fallback direto (evita 403)
+        peers = get_fallback_peers(sector)
+        
+        # Tenta enriquecer com dados atuais
+        enriched_peers = []
+        for sym in peers[:10]:
+            try:
+                peer = yf.Ticker(sym)
+                peer_info = peer.info
+                peer_data = {
+                    "symbol": sym,
+                    "pe_trailing": safe_float(peer_info.get("trailingPE")),
+                    "earnings_growth": safe_float(peer_info.get("earningsGrowth")),
+                    "market_cap": safe_float(peer_info.get("marketCap")),
+                    "pe_forward": safe_float(peer_info.get("forwardPE")),
+                }
+                # Remove None values
+                peer_data = {k: v for k, v in peer_data.items() if v is not None}
+                if peer_data:
+                    enriched_peers.append(peer_data)
+            except Exception as e:
+                print(f"Erro ao buscar dados de {sym}: {e}")
+                continue
+        
+        print(f"Encontrados {len(enriched_peers)} peers para {ticker}")
+        return enriched_peers
+        
+    except Exception as e:
+        print(f"Erro ao buscar peers para {ticker}: {e}")
+        return []
+
+def get_fallback_peers(sector: str) -> List[str]:
+    """
+    Lista de peers por setor (fallback quando não consegue baixar S&P 500)
+    """
+    sector_peers = {
+        "Technology": ["AAPL", "MSFT", "GOOGL", "META", "NVDA", "AMD", "INTC", "IBM", "ORCL", "CSCO"],
+        "Healthcare": ["JNJ", "PFE", "MRK", "ABBV", "AMGN", "GILD", "BMY", "UNH", "CVS", "ABT"],
+        "Financial Services": ["JPM", "BAC", "WFC", "C", "GS", "MS", "V", "MA", "AXP", "BLK"],
+        "Financial": ["JPM", "BAC", "WFC", "C", "GS", "MS", "V", "MA", "AXP", "BLK"],
+        "Consumer Cyclical": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "TGT", "LOW", "COST", "TJX"],
+        "Communication Services": ["VZ", "T", "CMCSA", "DIS", "TMUS", "CHTR", "NFLX", "WBD", "PARA", "FOX"],
+        "Communication": ["VZ", "T", "CMCSA", "DIS", "TMUS", "CHTR", "NFLX", "WBD", "PARA", "FOX"],
+        "Energy": ["XOM", "CVX", "COP", "SLB", "EOG", "PXD", "OXY", "MPC", "PSX", "VLO"],
+        "Industrials": ["GE", "BA", "CAT", "DE", "HON", "LMT", "UNP", "UPS", "FDX", "MMM"],
+        "Industrial": ["GE", "BA", "CAT", "DE", "HON", "LMT", "UNP", "UPS", "FDX", "MMM"],
+        "Consumer Defensive": ["PG", "KO", "PEP", "WMT", "CL", "GIS", "MDLZ", "SYY", "KHC", "COST"],
+        "Utilities": ["NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "ED", "XEL", "PCG"],
+        "Real Estate": ["AMT", "PLD", "CCI", "EQIX", "PSA", "WELL", "SPG", "AVB", "EQR", "VTR"],
+        "Basic Materials": ["LIN", "APD", "DOW", "DD", "FCX", "NEM", "BHP", "RIO", "VALE", "SHW"],
+        "Consumer Staples": ["PG", "KO", "PEP", "WMT", "CL", "GIS", "MDLZ", "SYY", "KHC", "COST"],
+    }
+    
+    # Tenta encontrar o setor, senão usa Technology como fallback
+    peers = sector_peers.get(sector, sector_peers.get("Technology", ["AAPL", "MSFT", "GOOGL"]))
+    
+    # Remove o próprio ticker se estiver na lista (só se ticker for uma string definida)
+    target = None
+    if 'ticker' in locals() and isinstance(locals().get('ticker'), str):
+        target = locals().get('ticker').upper()
+
+    return [p for p in peers if p != target] if target else peers

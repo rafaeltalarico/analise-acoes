@@ -1,0 +1,747 @@
+{
+  "ticker": "MS",
+  "company_name": "Morgan Stanley",
+  "sector": "Financial Services",
+  "industry": "Capital Markets",
+  "price": {
+    "current": 226.66,
+    "currency": "USD"
+  },
+  "scores": {
+    "value": {
+      "score": 2,
+      "max": 6,
+      "label": "Valuation",
+      "checks": [
+        {
+          "key": "below_fcf_value",
+          "label": "Abaixo do Valor de Fluxo de Caixa Futuro",
+          "passed": null,
+          "detail": "Dados insuficientes para o DCF"
+        },
+        {
+          "key": "significantly_below_fcf_value",
+          "label": "Significativamente Abaixo do Valor de Fluxo de Caixa Futuro",
+          "passed": null,
+          "detail": "Dados insuficientes para o DCF"
+        },
+        {
+          "key": "pe_vs_peers",
+          "label": "P/E vs Pares",
+          "passed": true,
+          "detail": "P/E 20.5x vs m\u00e9dia dos pares 20.9x"
+        },
+        {
+          "key": "pe_vs_industry",
+          "label": "P/E vs Ind\u00fastria",
+          "passed": true,
+          "detail": "P/E 20.5x vs aproxima\u00e7\u00e3o da ind\u00fastria 20.9x"
+        },
+        {
+          "key": "pe_vs_fair_ratio",
+          "label": "P/E vs Fair Ratio",
+          "passed": false,
+          "detail": "PEG de 2.70 (acima de 1,0)"
+        },
+        {
+          "key": "analyst_forecast",
+          "label": "Previs\u00e3o dos Analistas",
+          "passed": false,
+          "detail": "Alvo m\u00e9dio $217.86 vs pre\u00e7o atual $226.60"
+        }
+      ]
+    },
+    "future": {
+      "score": 1,
+      "max": 6,
+      "label": "Crescimento Futuro",
+      "checks": [
+        {
+          "key": "earnings_vs_savings_rate",
+          "label": "Lucro vs Taxa Livre de Risco",
+          "passed": true,
+          "detail": "Crescimento previsto 7.6% vs taxa livre de risco 4.3%"
+        },
+        {
+          "key": "earnings_vs_market",
+          "label": "Lucro vs Mercado",
+          "passed": false,
+          "detail": "Crescimento previsto 7.6% vs m\u00e9dia do mercado 15%"
+        },
+        {
+          "key": "high_growth_earnings",
+          "label": "Alto Crescimento de Lucro",
+          "passed": false,
+          "detail": "Crescimento previsto 7.6% vs limiar de 20%"
+        },
+        {
+          "key": "revenue_vs_market",
+          "label": "Receita vs Mercado",
+          "passed": false,
+          "detail": "Crescimento previsto 5.7% vs m\u00e9dia do mercado 10%"
+        },
+        {
+          "key": "high_growth_revenue",
+          "label": "Alto Crescimento de Receita",
+          "passed": false,
+          "detail": "Crescimento previsto 5.7% vs limiar de 20%"
+        },
+        {
+          "key": "future_roe",
+          "label": "ROE Futuro",
+          "passed": false,
+          "detail": "ROE atual 16.4% vs limiar de 20%"
+        }
+      ]
+    },
+    "past": {
+      "score": 4,
+      "max": 6,
+      "label": "Desempenho Passado",
+      "checks": [
+        {
+          "key": "quality_earnings",
+          "label": "Qualidade do Lucro",
+          "passed": false,
+          "detail": "Fluxo de caixa operacional $-1,011,000,000 vs lucro l\u00edquido $16,861,000,000"
+        },
+        {
+          "key": "growing_profit_margin",
+          "label": "Margem de Lucro Crescente",
+          "passed": true,
+          "detail": "Margem atual 25.6% vs ano anterior 23.2%"
+        },
+        {
+          "key": "earnings_trend",
+          "label": "Tend\u00eancia de Lucro",
+          "passed": true,
+          "detail": "Lucro do per\u00edodo mais recente vs mais antigo dispon\u00edvel (4 anos)"
+        },
+        {
+          "key": "accelerating_growth",
+          "label": "Crescimento Acelerando",
+          "passed": true,
+          "detail": "Crescimento do \u00faltimo ano 25.9% vs m\u00e9dia de 4 anos 15.2%"
+        },
+        {
+          "key": "earnings_vs_industry",
+          "label": "Lucro vs Ind\u00fastria",
+          "passed": true,
+          "detail": "Crescimento 25.9% vs m\u00e9dia dos pares 0.4%"
+        },
+        {
+          "key": "high_roe",
+          "label": "ROE Elevado",
+          "passed": false,
+          "detail": "ROE 16.4% vs limiar de 20%"
+        }
+      ]
+    },
+    "health": {
+      "score": 1,
+      "max": 6,
+      "label": "Sa\u00fade Financeira",
+      "checks": [
+        {
+          "key": "short_term_liabilities",
+          "label": "Passivos de Curto Prazo",
+          "passed": true,
+          "detail": "Current ratio 1.96"
+        },
+        {
+          "key": "long_term_liabilities",
+          "label": "Passivos de Longo Prazo",
+          "passed": null,
+          "detail": "Dados de balan\u00e7o insuficientes"
+        },
+        {
+          "key": "debt_level",
+          "label": "N\u00edvel de D\u00edvida",
+          "passed": false,
+          "detail": "Debt/Equity 502.25"
+        },
+        {
+          "key": "reducing_debt",
+          "label": "Reduzindo D\u00edvida",
+          "passed": false,
+          "detail": "Hist\u00f3rico de d\u00edvida insuficiente"
+        },
+        {
+          "key": "debt_coverage",
+          "label": "Cobertura de D\u00edvida",
+          "passed": false,
+          "detail": "OCF $-1,011,000,000 vs d\u00edvida total $579,511,975,936"
+        },
+        {
+          "key": "interest_coverage",
+          "label": "Cobertura de Juros",
+          "passed": null,
+          "detail": "Sem d\u00edvida com juros relevante ou dado indispon\u00edvel"
+        }
+      ]
+    },
+    "dividend": {
+      "score": 3,
+      "max": 6,
+      "label": "Dividendos",
+      "checks": [
+        {
+          "key": "notable_dividend",
+          "label": "Dividendo Not\u00e1vel",
+          "passed": true,
+          "detail": "Yield de 1.76% acima do piso de 1.5%"
+        },
+        {
+          "key": "high_dividend",
+          "label": "Alto Dividendo",
+          "passed": false,
+          "detail": "Yield de 1.76% vs limiar de 4.0%"
+        },
+        {
+          "key": "stable_dividend",
+          "label": "Dividendo Est\u00e1vel",
+          "passed": false,
+          "detail": "Hist\u00f3rico de dividendos insuficiente ou com cortes"
+        },
+        {
+          "key": "growing_dividend",
+          "label": "Dividendo Crescente",
+          "passed": true,
+          "detail": "Dividendo anual cresceu no per\u00edodo analisado"
+        },
+        {
+          "key": "earnings_coverage",
+          "label": "Cobertura por Lucro",
+          "passed": true,
+          "detail": "Payout ratio de 35.5% vs limiar de 75%"
+        },
+        {
+          "key": "cash_flow_coverage",
+          "label": "Cobertura por Fluxo de Caixa",
+          "passed": null,
+          "detail": "Dados de fluxo de caixa insuficientes"
+        }
+      ]
+    },
+    "management": {
+      "score": 0,
+      "max": 4,
+      "label": "Gest\u00e3o",
+      "checks": [
+        {
+          "key": "compensation_vs_market",
+          "label": "Remunera\u00e7\u00e3o vs Mercado",
+          "passed": null,
+          "detail": "Dados de remunera\u00e7\u00e3o do CEO n\u00e3o dispon\u00edveis"
+        },
+        {
+          "key": "compensation_vs_earnings",
+          "label": "Remunera\u00e7\u00e3o vs Lucro",
+          "passed": null,
+          "detail": "Dados insuficientes para comparar remunera\u00e7\u00e3o e lucro"
+        },
+        {
+          "key": "experienced_management",
+          "label": "Experi\u00eancia da Diretoria",
+          "passed": null,
+          "detail": "Dados de tempo de mandato n\u00e3o dispon\u00edveis via Yahoo Finance"
+        },
+        {
+          "key": "experienced_board",
+          "label": "Experi\u00eancia do Conselho",
+          "passed": null,
+          "detail": "Dados de tempo de mandato n\u00e3o dispon\u00edveis via Yahoo Finance"
+        }
+      ]
+    }
+  },
+  "metrics": {},
+  "metrics_summary": [
+    {
+      "category": "Valuation",
+      "label": "P/E vs Pares",
+      "status": "positivo",
+      "detail": "P/E 20.5x vs m\u00e9dia dos pares 20.9x"
+    },
+    {
+      "category": "Valuation",
+      "label": "P/E vs Ind\u00fastria",
+      "status": "positivo",
+      "detail": "P/E 20.5x vs aproxima\u00e7\u00e3o da ind\u00fastria 20.9x"
+    },
+    {
+      "category": "Valuation",
+      "label": "P/E vs Fair Ratio",
+      "status": "negativo",
+      "detail": "PEG de 2.70 (acima de 1,0)"
+    },
+    {
+      "category": "Valuation",
+      "label": "Previs\u00e3o dos Analistas",
+      "status": "negativo",
+      "detail": "Alvo m\u00e9dio $217.86 vs pre\u00e7o atual $226.60"
+    },
+    {
+      "category": "Crescimento Futuro",
+      "label": "Lucro vs Taxa Livre de Risco",
+      "status": "positivo",
+      "detail": "Crescimento previsto 7.6% vs taxa livre de risco 4.3%"
+    },
+    {
+      "category": "Crescimento Futuro",
+      "label": "Lucro vs Mercado",
+      "status": "negativo",
+      "detail": "Crescimento previsto 7.6% vs m\u00e9dia do mercado 15%"
+    },
+    {
+      "category": "Crescimento Futuro",
+      "label": "Alto Crescimento de Lucro",
+      "status": "negativo",
+      "detail": "Crescimento previsto 7.6% vs limiar de 20%"
+    },
+    {
+      "category": "Crescimento Futuro",
+      "label": "Receita vs Mercado",
+      "status": "negativo",
+      "detail": "Crescimento previsto 5.7% vs m\u00e9dia do mercado 10%"
+    },
+    {
+      "category": "Crescimento Futuro",
+      "label": "Alto Crescimento de Receita",
+      "status": "negativo",
+      "detail": "Crescimento previsto 5.7% vs limiar de 20%"
+    },
+    {
+      "category": "Crescimento Futuro",
+      "label": "ROE Futuro",
+      "status": "negativo",
+      "detail": "ROE atual 16.4% vs limiar de 20%"
+    },
+    {
+      "category": "Desempenho Passado",
+      "label": "Qualidade do Lucro",
+      "status": "negativo",
+      "detail": "Fluxo de caixa operacional $-1,011,000,000 vs lucro l\u00edquido $16,861,000,000"
+    },
+    {
+      "category": "Desempenho Passado",
+      "label": "Margem de Lucro Crescente",
+      "status": "positivo",
+      "detail": "Margem atual 25.6% vs ano anterior 23.2%"
+    },
+    {
+      "category": "Desempenho Passado",
+      "label": "Tend\u00eancia de Lucro",
+      "status": "positivo",
+      "detail": "Lucro do per\u00edodo mais recente vs mais antigo dispon\u00edvel (4 anos)"
+    },
+    {
+      "category": "Desempenho Passado",
+      "label": "Crescimento Acelerando",
+      "status": "positivo",
+      "detail": "Crescimento do \u00faltimo ano 25.9% vs m\u00e9dia de 4 anos 15.2%"
+    },
+    {
+      "category": "Desempenho Passado",
+      "label": "Lucro vs Ind\u00fastria",
+      "status": "positivo",
+      "detail": "Crescimento 25.9% vs m\u00e9dia dos pares 0.4%"
+    },
+    {
+      "category": "Desempenho Passado",
+      "label": "ROE Elevado",
+      "status": "negativo",
+      "detail": "ROE 16.4% vs limiar de 20%"
+    },
+    {
+      "category": "Sa\u00fade Financeira",
+      "label": "Passivos de Curto Prazo",
+      "status": "positivo",
+      "detail": "Current ratio 1.96"
+    },
+    {
+      "category": "Sa\u00fade Financeira",
+      "label": "N\u00edvel de D\u00edvida",
+      "status": "negativo",
+      "detail": "Debt/Equity 502.25"
+    },
+    {
+      "category": "Sa\u00fade Financeira",
+      "label": "Reduzindo D\u00edvida",
+      "status": "negativo",
+      "detail": "Hist\u00f3rico de d\u00edvida insuficiente"
+    },
+    {
+      "category": "Sa\u00fade Financeira",
+      "label": "Cobertura de D\u00edvida",
+      "status": "negativo",
+      "detail": "OCF $-1,011,000,000 vs d\u00edvida total $579,511,975,936"
+    },
+    {
+      "category": "Dividendos",
+      "label": "Dividendo Not\u00e1vel",
+      "status": "positivo",
+      "detail": "Yield de 1.76% acima do piso de 1.5%"
+    },
+    {
+      "category": "Dividendos",
+      "label": "Alto Dividendo",
+      "status": "negativo",
+      "detail": "Yield de 1.76% vs limiar de 4.0%"
+    },
+    {
+      "category": "Dividendos",
+      "label": "Dividendo Est\u00e1vel",
+      "status": "negativo",
+      "detail": "Hist\u00f3rico de dividendos insuficiente ou com cortes"
+    },
+    {
+      "category": "Dividendos",
+      "label": "Dividendo Crescente",
+      "status": "positivo",
+      "detail": "Dividendo anual cresceu no per\u00edodo analisado"
+    },
+    {
+      "category": "Dividendos",
+      "label": "Cobertura por Lucro",
+      "status": "positivo",
+      "detail": "Payout ratio de 35.5% vs limiar de 75%"
+    }
+  ],
+  "analysts": {
+    "recommendation": "buy",
+    "target_mean": 217.85715,
+    "number_of_analysts": 21
+  },
+  "earnings_summary": {
+    "available": false,
+    "text": "Dados de earnings dispon\u00edveis via an\u00e1lise Snowflake"
+  },
+  "peers": [
+    {
+      "symbol": "JPM",
+      "pe_trailing": 14.967024,
+      "earnings_growth": 0.469,
+      "market_cap": 936435646464.0,
+      "pe_forward": 14.335848
+    },
+    {
+      "symbol": "BAC",
+      "pe_trailing": 14.269053,
+      "earnings_growth": 0.36,
+      "market_cap": 433605115904.0,
+      "pe_forward": 11.885593
+    },
+    {
+      "symbol": "WFC",
+      "pe_trailing": 12.672965,
+      "earnings_growth": 0.151,
+      "market_cap": 266817929216.0,
+      "pe_forward": 11.088164
+    },
+    {
+      "symbol": "C",
+      "pe_trailing": 14.517242,
+      "earnings_growth": 0.561,
+      "market_cap": 229775327232.0,
+      "pe_forward": 10.673749
+    },
+    {
+      "symbol": "GS",
+      "pe_trailing": 19.048643,
+      "earnings_growth": 0.923,
+      "market_cap": 335034056704.0,
+      "pe_forward": 16.18512
+    },
+    {
+      "symbol": "MS",
+      "pe_trailing": 20.525362,
+      "earnings_growth": 0.319,
+      "market_cap": 357412765696.0,
+      "pe_forward": 17.376528
+    },
+    {
+      "symbol": "V",
+      "pe_trailing": 31.303663,
+      "earnings_growth": 0.355,
+      "market_cap": 682231529472.0,
+      "pe_forward": 24.129707
+    },
+    {
+      "symbol": "MA",
+      "pe_trailing": 31.243776,
+      "earnings_growth": 0.212,
+      "market_cap": 476764209152.0,
+      "pe_forward": 23.671574
+    },
+    {
+      "symbol": "AXP",
+      "pe_trailing": 22.643347,
+      "earnings_growth": 0.176,
+      "market_cap": 247356981248.0,
+      "pe_forward": 17.974394
+    },
+    {
+      "symbol": "BLK",
+      "pe_trailing": 27.643145,
+      "earnings_growth": 0.459,
+      "market_cap": 178355240960.0,
+      "pe_forward": 17.627325
+    }
+  ],
+  "snowflake": {
+    "value": {
+      "score": 2,
+      "max": 6,
+      "evaluated": 4,
+      "checks": [
+        {
+          "key": "below_fcf_value",
+          "label": "Abaixo do Valor de Fluxo de Caixa Futuro",
+          "passed": null,
+          "detail": "Dados insuficientes para o DCF"
+        },
+        {
+          "key": "significantly_below_fcf_value",
+          "label": "Significativamente Abaixo do Valor de Fluxo de Caixa Futuro",
+          "passed": null,
+          "detail": "Dados insuficientes para o DCF"
+        },
+        {
+          "key": "pe_vs_peers",
+          "label": "P/E vs Pares",
+          "passed": true,
+          "detail": "P/E 20.5x vs m\u00e9dia dos pares 20.9x"
+        },
+        {
+          "key": "pe_vs_industry",
+          "label": "P/E vs Ind\u00fastria",
+          "passed": true,
+          "detail": "P/E 20.5x vs aproxima\u00e7\u00e3o da ind\u00fastria 20.9x"
+        },
+        {
+          "key": "pe_vs_fair_ratio",
+          "label": "P/E vs Fair Ratio",
+          "passed": false,
+          "detail": "PEG de 2.70 (acima de 1,0)"
+        },
+        {
+          "key": "analyst_forecast",
+          "label": "Previs\u00e3o dos Analistas",
+          "passed": false,
+          "detail": "Alvo m\u00e9dio $217.86 vs pre\u00e7o atual $226.60"
+        }
+      ]
+    },
+    "future": {
+      "score": 1,
+      "max": 6,
+      "evaluated": 6,
+      "checks": [
+        {
+          "key": "earnings_vs_savings_rate",
+          "label": "Lucro vs Taxa Livre de Risco",
+          "passed": true,
+          "detail": "Crescimento previsto 7.6% vs taxa livre de risco 4.3%"
+        },
+        {
+          "key": "earnings_vs_market",
+          "label": "Lucro vs Mercado",
+          "passed": false,
+          "detail": "Crescimento previsto 7.6% vs m\u00e9dia do mercado 15%"
+        },
+        {
+          "key": "high_growth_earnings",
+          "label": "Alto Crescimento de Lucro",
+          "passed": false,
+          "detail": "Crescimento previsto 7.6% vs limiar de 20%"
+        },
+        {
+          "key": "revenue_vs_market",
+          "label": "Receita vs Mercado",
+          "passed": false,
+          "detail": "Crescimento previsto 5.7% vs m\u00e9dia do mercado 10%"
+        },
+        {
+          "key": "high_growth_revenue",
+          "label": "Alto Crescimento de Receita",
+          "passed": false,
+          "detail": "Crescimento previsto 5.7% vs limiar de 20%"
+        },
+        {
+          "key": "future_roe",
+          "label": "ROE Futuro",
+          "passed": false,
+          "detail": "ROE atual 16.4% vs limiar de 20%"
+        }
+      ]
+    },
+    "past": {
+      "score": 4,
+      "max": 6,
+      "evaluated": 6,
+      "checks": [
+        {
+          "key": "quality_earnings",
+          "label": "Qualidade do Lucro",
+          "passed": false,
+          "detail": "Fluxo de caixa operacional $-1,011,000,000 vs lucro l\u00edquido $16,861,000,000"
+        },
+        {
+          "key": "growing_profit_margin",
+          "label": "Margem de Lucro Crescente",
+          "passed": true,
+          "detail": "Margem atual 25.6% vs ano anterior 23.2%"
+        },
+        {
+          "key": "earnings_trend",
+          "label": "Tend\u00eancia de Lucro",
+          "passed": true,
+          "detail": "Lucro do per\u00edodo mais recente vs mais antigo dispon\u00edvel (4 anos)"
+        },
+        {
+          "key": "accelerating_growth",
+          "label": "Crescimento Acelerando",
+          "passed": true,
+          "detail": "Crescimento do \u00faltimo ano 25.9% vs m\u00e9dia de 4 anos 15.2%"
+        },
+        {
+          "key": "earnings_vs_industry",
+          "label": "Lucro vs Ind\u00fastria",
+          "passed": true,
+          "detail": "Crescimento 25.9% vs m\u00e9dia dos pares 0.4%"
+        },
+        {
+          "key": "high_roe",
+          "label": "ROE Elevado",
+          "passed": false,
+          "detail": "ROE 16.4% vs limiar de 20%"
+        }
+      ]
+    },
+    "health": {
+      "score": 1,
+      "max": 6,
+      "evaluated": 4,
+      "checks": [
+        {
+          "key": "short_term_liabilities",
+          "label": "Passivos de Curto Prazo",
+          "passed": true,
+          "detail": "Current ratio 1.96"
+        },
+        {
+          "key": "long_term_liabilities",
+          "label": "Passivos de Longo Prazo",
+          "passed": null,
+          "detail": "Dados de balan\u00e7o insuficientes"
+        },
+        {
+          "key": "debt_level",
+          "label": "N\u00edvel de D\u00edvida",
+          "passed": false,
+          "detail": "Debt/Equity 502.25"
+        },
+        {
+          "key": "reducing_debt",
+          "label": "Reduzindo D\u00edvida",
+          "passed": false,
+          "detail": "Hist\u00f3rico de d\u00edvida insuficiente"
+        },
+        {
+          "key": "debt_coverage",
+          "label": "Cobertura de D\u00edvida",
+          "passed": false,
+          "detail": "OCF $-1,011,000,000 vs d\u00edvida total $579,511,975,936"
+        },
+        {
+          "key": "interest_coverage",
+          "label": "Cobertura de Juros",
+          "passed": null,
+          "detail": "Sem d\u00edvida com juros relevante ou dado indispon\u00edvel"
+        }
+      ]
+    },
+    "dividend": {
+      "score": 3,
+      "max": 6,
+      "evaluated": 5,
+      "checks": [
+        {
+          "key": "notable_dividend",
+          "label": "Dividendo Not\u00e1vel",
+          "passed": true,
+          "detail": "Yield de 1.76% acima do piso de 1.5%"
+        },
+        {
+          "key": "high_dividend",
+          "label": "Alto Dividendo",
+          "passed": false,
+          "detail": "Yield de 1.76% vs limiar de 4.0%"
+        },
+        {
+          "key": "stable_dividend",
+          "label": "Dividendo Est\u00e1vel",
+          "passed": false,
+          "detail": "Hist\u00f3rico de dividendos insuficiente ou com cortes"
+        },
+        {
+          "key": "growing_dividend",
+          "label": "Dividendo Crescente",
+          "passed": true,
+          "detail": "Dividendo anual cresceu no per\u00edodo analisado"
+        },
+        {
+          "key": "earnings_coverage",
+          "label": "Cobertura por Lucro",
+          "passed": true,
+          "detail": "Payout ratio de 35.5% vs limiar de 75%"
+        },
+        {
+          "key": "cash_flow_coverage",
+          "label": "Cobertura por Fluxo de Caixa",
+          "passed": null,
+          "detail": "Dados de fluxo de caixa insuficientes"
+        }
+      ]
+    },
+    "management": {
+      "score": 0,
+      "max": 4,
+      "evaluated": 0,
+      "checks": [
+        {
+          "key": "compensation_vs_market",
+          "label": "Remunera\u00e7\u00e3o vs Mercado",
+          "passed": null,
+          "detail": "Dados de remunera\u00e7\u00e3o do CEO n\u00e3o dispon\u00edveis"
+        },
+        {
+          "key": "compensation_vs_earnings",
+          "label": "Remunera\u00e7\u00e3o vs Lucro",
+          "passed": null,
+          "detail": "Dados insuficientes para comparar remunera\u00e7\u00e3o e lucro"
+        },
+        {
+          "key": "experienced_management",
+          "label": "Experi\u00eancia da Diretoria",
+          "passed": null,
+          "detail": "Dados de tempo de mandato n\u00e3o dispon\u00edveis via Yahoo Finance"
+        },
+        {
+          "key": "experienced_board",
+          "label": "Experi\u00eancia do Conselho",
+          "passed": null,
+          "detail": "Dados de tempo de mandato n\u00e3o dispon\u00edveis via Yahoo Finance"
+        }
+      ]
+    }
+  },
+  "overall_score": 32,
+  "sources": [
+    "Yahoo Finance",
+    "Snowflake Analysis"
+  ],
+  "timestamp": "2026-07-15T16:07:57.915609+00:00",
+  "status": "success"
+}

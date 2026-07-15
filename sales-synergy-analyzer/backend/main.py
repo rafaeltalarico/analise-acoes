@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+import json  # ADICIONE ESTE IMPORT
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,13 +8,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from services.yahoo_service import get_stock_data
-from services.peers_service import get_peers_data
-from services.sec_service import get_earnings_release
-from services.claude_service import run_claude_analysis
-from services.snowflake_service import get_snowflake_analysis
+from services.snowflake_service import get_snowflake_analysis, get_peers
 
-app = FastAPI(title="Stock Analysis API", version="1.0.0")
+app = FastAPI(title="Stock Analysis API - Snowflake", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-STEP_TIMEOUT = 15
+STEP_TIMEOUT = 30
 
 
 @app.get("/health")
@@ -42,106 +39,153 @@ async def analyze(ticker: str):
     if not ticker or len(ticker) > 10:
         raise HTTPException(status_code=400, detail="Ticker inválido.")
 
-    # Step 1: Yahoo Finance data
+    print(f"\n{'='*60}")
+    print(f"🚀 Iniciando análise para {ticker}")
+    print(f"{'='*60}")
+    
+    # Busca peers
     try:
-        yahoo_data = await asyncio.wait_for(get_stock_data(ticker), timeout=STEP_TIMEOUT)
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Timeout ao buscar dados do Yahoo Finance.")
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        print("📊 Buscando peers...")
+        peers = await asyncio.wait_for(
+            get_peers(ticker),
+            timeout=STEP_TIMEOUT
+        )
+        print(f"✅ Encontrados {len(peers)} peers")
+        if peers:
+            print(f"📋 Primeiros peers: {[p.get('symbol') for p in peers[:5]]}")
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Erro ao buscar dados: {str(e)}")
+        peers = []
+        print(f"❌ Erro ao buscar peers: {e}")
 
-    sector = yahoo_data.get("sector")
-    metrics = yahoo_data.get("metrics", {})
-
-    # Steps 2 + 3 in parallel: peers and SEC
+    # Executa análise Snowflake
     try:
-        peers_result, sec_result = await asyncio.wait_for(
-            asyncio.gather(
-                get_peers_data(ticker, sector),
-                get_earnings_release(ticker),
-                return_exceptions=True,
-            ),
-            timeout=STEP_TIMEOUT,
+        print("\n🔍 Executando análise Snowflake...")
+        snowflake_result = await asyncio.wait_for(
+            get_snowflake_analysis(ticker, peers),
+            timeout=STEP_TIMEOUT
         )
-    except asyncio.TimeoutError:
-        peers_result = []
-        sec_result = {"sec_available": False}
+        print("✅ Análise Snowflake concluída")
+    except Exception as e:
+        print(f"❌ Erro na análise: {e}")
+        raise HTTPException(status_code=502, detail=f"Erro na análise: {str(e)}")
 
-    if isinstance(peers_result, Exception):
-        peers_result = []
-    if isinstance(sec_result, Exception):
-        sec_result = {"sec_available": False}
-
-    # Step 4: Claude (scores + resumo) e Snowflake (checks determinísticos) em paralelo
-    sec_text = sec_result.get("text") if sec_result.get("sec_available") else None
-    peers_list = peers_result if isinstance(peers_result, list) else []
-    try:
-        claude_result, snowflake_result = await asyncio.wait_for(
-            asyncio.gather(
-                run_claude_analysis(metrics, sector, sec_text),
-                get_snowflake_analysis(ticker, peers_list),
-                return_exceptions=True,
-            ),
-            timeout=STEP_TIMEOUT,
-        )
-    except asyncio.TimeoutError:
-        claude_result = {"scores": None, "earnings": None}
-        snowflake_result = None
-
-    if isinstance(claude_result, Exception):
-        claude_result = {"scores": None, "earnings": None}
-    if isinstance(snowflake_result, Exception):
-        snowflake_result = None
-
-    # Build sources list
-    sources = ["Yahoo Finance"]
-    if sec_result.get("sec_available"):
-        sources.append("SEC EDGAR")
-    if claude_result.get("scores") or claude_result.get("earnings"):
-        sources.append("Claude API")
-
-    # Earnings summary
-    earnings_summary = {"available": False}
-    if sec_result.get("sec_available") and claude_result.get("earnings"):
-        ea = claude_result["earnings"]
-        earnings_summary = {
-            "available": True,
-            "filing_date": sec_result.get("filing_date"),
-            "period": None,
-            "sentiment": ea.get("sentiment"),
-            "text": ea.get("text"),
-            "highlights": ea.get("highlights", []),
-            "outlook": ea.get("outlook"),
-        }
-    elif sec_result.get("sec_available"):
-        earnings_summary = {
-            "available": True,
-            "filing_date": sec_result.get("filing_date"),
-            "period": None,
-            "sentiment": None,
-            "text": "Documento encontrado mas resumo IA indisponível.",
-            "highlights": [],
-            "outlook": None,
-        }
-
-    return {
-        "ticker": yahoo_data["ticker"],
-        "company_name": yahoo_data.get("company_name"),
-        "sector": yahoo_data.get("sector"),
-        "industry": yahoo_data.get("industry"),
-        "price": yahoo_data.get("price", {}),
-        "scores": claude_result.get("scores"),
-        "metrics": metrics,
-        "metrics_summary": claude_result.get("metrics_summary"),
-        "analysts": yahoo_data.get("analysts", {}),
-        "earnings_summary": earnings_summary,
-        "peers": peers_result if isinstance(peers_result, list) else [],
-        "snowflake": snowflake_result,
-        "sources": sources,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+    # Converte Snowflake para o formato antigo (compatível com frontend)
+    scores = {}
+    metrics_summary = []
+    
+    # Mapeamento de categorias Snowflake para o formato antigo
+    category_mapping = {
+        "value": "Valuation",
+        "future": "Crescimento Futuro",
+        "past": "Desempenho Passado",
+        "health": "Saúde Financeira",
+        "dividend": "Dividendos",
+        "management": "Gestão"
     }
+    
+    print("\n📊 Processando categorias...")
+    for category, display_name in category_mapping.items():
+        if category in snowflake_result:
+            data = snowflake_result[category]
+            scores[category] = {
+                "score": data.get("score", 0),
+                "max": data.get("max", 0),
+                "label": display_name,
+                "checks": data.get("checks", [])
+            }
+            print(f"  ✅ {display_name}: {data.get('score', 0)}/{data.get('max', 0)}")
+            
+            # Adiciona à métricas summary
+            for check in data.get("checks", []):
+                if check.get("passed") is not None:
+                    metrics_summary.append({
+                        "category": display_name,
+                        "label": check.get("label"),
+                        "status": "positivo" if check.get("passed") else "negativo" if check.get("passed") is False else "neutro",
+                        "detail": check.get("detail")
+                    })
+
+    # Calcula score geral
+    total_score = sum(data.get("score", 0) for data in snowflake_result.values())
+    total_max = sum(data.get("max", 0) for data in snowflake_result.values())
+    overall_score = round((total_score / total_max * 100) if total_max > 0 else 0)
+    print(f"\n📈 Score Geral: {total_score}/{total_max} = {overall_score}%")
+
+    # Busca dados básicos do Yahoo para compatibilidade
+    try:
+        import yfinance as yf
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        company_name = info.get("longName", ticker)
+        sector = info.get("sector", "N/A")
+        industry = info.get("industry", "N/A")
+        price = info.get("currentPrice") or info.get("regularMarketPrice")
+        
+        # Dados de analistas (simplificados)
+        analysts = {
+            "recommendation": info.get("recommendationKey", "N/A"),
+            "target_mean": info.get("targetMeanPrice"),
+            "number_of_analysts": info.get("numberOfAnalystOpinions")
+        }
+        print(f"🏢 Empresa: {company_name}")
+        print(f"💰 Preço: ${price}")
+        print(f"📊 Recomendação: {analysts['recommendation']}")
+    except Exception as e:
+        print(f"⚠️ Erro ao buscar dados básicos: {e}")
+        company_name = ticker
+        sector = "N/A"
+        industry = "N/A"
+        price = None
+        analysts = {}
+
+    # EXIBE O RESULTADO COMPLETO NO TERMINAL
+    print(f"\n{'='*60}")
+    print(f"📋 RESULTADO COMPLETO DA ANÁLISE PARA {ticker}")
+    print(f"{'='*60}")
+    
+    # Exibe cada categoria com seus checks
+    for category, display_name in category_mapping.items():
+        if category in snowflake_result:
+            data = snowflake_result[category]
+            print(f"\n📂 {display_name} ({data.get('score', 0)}/{data.get('max', 0)})")
+            print("-" * 50)
+            for check in data.get("checks", []):
+                status_icon = "✅" if check.get("passed") is True else "❌" if check.get("passed") is False else "➖"
+                print(f"  {status_icon} {check.get('label')}")
+                print(f"     📝 {check.get('detail')}")
+    
+    print(f"\n{'='*60}")
+    print(f"📊 SCORE GERAL: {overall_score}% ({total_score}/{total_max})")
+    print(f"{'='*60}\n")
+
+    # Retorna no formato que o frontend espera
+    response = {
+        "ticker": ticker,
+        "company_name": company_name,
+        "sector": sector,
+        "industry": industry,
+        "price": {
+            "current": price,
+            "currency": "USD"
+        },
+        "scores": scores,
+        "metrics": {},
+        "metrics_summary": metrics_summary,
+        "analysts": analysts,
+        "earnings_summary": {
+            "available": False,
+            "text": "Dados de earnings disponíveis via análise Snowflake"
+        },
+        "peers": peers,
+        "snowflake": snowflake_result,
+        "overall_score": overall_score,
+        "sources": ["Yahoo Finance", "Snowflake Analysis"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": "success"
+    }
+    
+    return response
 
 
 if __name__ == "__main__":

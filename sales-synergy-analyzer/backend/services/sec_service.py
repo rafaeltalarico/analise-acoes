@@ -1,7 +1,10 @@
 import httpx
 import re
 from typing import Optional, Dict, Any
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+import warnings
+
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 SEC_HEADERS = {
     "User-Agent": "StockAnalyzer rafael@email.com",
@@ -109,7 +112,7 @@ async def fetch_document_text(cik: str, accession_no: str, primary_doc: str) -> 
 
             content_type = resp.headers.get("content-type", "")
             if "html" in content_type or primary_doc.endswith(".htm") or primary_doc.endswith(".html"):
-                soup = BeautifulSoup(resp.text, "lxml")
+                soup = BeautifulSoup(resp.text, "xml")
                 for tag in soup(["script", "style"]):
                     tag.decompose()
                 text = soup.get_text(separator="\n")
