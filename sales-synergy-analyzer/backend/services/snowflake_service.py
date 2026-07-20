@@ -135,6 +135,16 @@ def compute_value_checks(
         growth_estimate=forward_earnings_growth,
     )
 
+    # Add net cash per share to the DCF equity value.
+    # Companies with large cash/investment balances (e.g. GOOGL ~$100B net cash)
+    # are undervalued by DCF alone, which only captures operating cash flows.
+    if fair_value is not None:
+        total_cash = safe_float(info.get("totalCash")) or 0
+        total_debt = safe_float(info.get("totalDebt")) or 0
+        shares_out = safe_float(info.get("sharesOutstanding")) or 1
+        net_cash_per_share = max(0.0, (total_cash - total_debt) / shares_out)
+        fair_value = fair_value + net_cash_per_share
+
     below_fcf = None
     significantly_below = None
     discount_pct = None
@@ -168,12 +178,19 @@ def compute_value_checks(
     significantly_below_detail = "Dados insuficientes para o DCF"
     if fair_value and price and discount_pct is not None:
         if discount_pct >= 0:
-            below_fcf_detail = f"Preço ${price:.2f} está {discount_pct*100:.1f}% abaixo do valor justo estimado ${fair_value:.2f}"
+            below_fcf_detail = (
+                f"Preço ${price:.2f} está {discount_pct*100:.1f}% abaixo do valor justo "
+                f"estimado ${fair_value:.2f} (DCF 10 anos + caixa líquido)"
+            )
             significantly_below_detail = f"Desconto de {discount_pct*100:.1f}% vs limiar de {SIGNIFICANT_DISCOUNT_THRESHOLD*100:.0f}%"
         else:
             premium_pct = -discount_pct
-            below_fcf_detail = f"Preço ${price:.2f} está {premium_pct*100:.1f}% acima do valor justo estimado ${fair_value:.2f}"
-            significantly_below_detail = f"Ativo negociado com prêmio (não desconto) sobre o valor justo estimado"
+            large_premium_note = " — modelo DCF tende a subestimar empresas de alto crescimento" if premium_pct > 0.5 else ""
+            below_fcf_detail = (
+                f"Preço ${price:.2f} está {premium_pct*100:.1f}% acima do valor justo "
+                f"estimado ${fair_value:.2f} (DCF 10 anos + caixa líquido){large_premium_note}"
+            )
+            significantly_below_detail = "Ativo negociado com prêmio sobre o valor justo estimado pelo DCF"
 
     checks = [
         check(
@@ -683,10 +700,31 @@ async def get_snowflake_analysis(
     forward_earnings_growth = None
     try:
         ee = stock.earnings_estimate
-        if ee is not None and not ee.empty and "+1y" in ee.index and "growth" in ee.columns:
-            forward_earnings_growth = safe_float(ee.loc["+1y", "growth"])
+        if ee is not None and not ee.empty and "growth" in ee.columns:
+            # Prefer +1y; if unavailable or very low, also check +2y
+            candidates = []
+            for period in ["+1y", "+2y"]:
+                if period in ee.index:
+                    val = safe_float(ee.loc[period, "growth"])
+                    if val is not None and val > 0.01:
+                        candidates.append(val)
+            if candidates:
+                forward_earnings_growth = max(candidates)
     except Exception:
         pass
+
+    # Supplement with trailing earnings growth when forward is missing or suspiciously low (<5%).
+    # A single-year near-term estimate can be compressed by one-time base effects; blending with
+    # the trailing figure gives a more representative proxy for the DCF growth input.
+    trailing_earnings_growth = safe_float(info.get("earningsGrowth"))
+    if trailing_earnings_growth and trailing_earnings_growth > 0.02:
+        if forward_earnings_growth is None:
+            forward_earnings_growth = trailing_earnings_growth
+        elif forward_earnings_growth < 0.05:
+            # Blend: arithmetic average of forward and trailing
+            forward_earnings_growth = (forward_earnings_growth + trailing_earnings_growth) / 2
+
+    print(f"📈 Forward earnings growth: {forward_earnings_growth}")
 
     forward_revenue_growth = None
     try:
@@ -772,8 +810,8 @@ def get_fallback_peers(sector: str) -> List[str]:
         "Financial Services": ["JPM", "BAC", "WFC", "C", "GS", "MS", "V", "MA", "AXP", "BLK"],
         "Financial": ["JPM", "BAC", "WFC", "C", "GS", "MS", "V", "MA", "AXP", "BLK"],
         "Consumer Cyclical": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "TGT", "LOW", "COST", "TJX"],
-        "Communication Services": ["VZ", "T", "CMCSA", "DIS", "TMUS", "CHTR", "NFLX", "WBD", "PARA", "FOX"],
-        "Communication": ["VZ", "T", "CMCSA", "DIS", "TMUS", "CHTR", "NFLX", "WBD", "PARA", "FOX"],
+        "Communication Services": ["META", "NFLX", "DIS", "SNAP", "PINS", "RDDT", "CMCSA", "WBD", "CHTR", "TMUS"],
+        "Communication": ["META", "NFLX", "DIS", "SNAP", "PINS", "RDDT", "CMCSA", "WBD", "CHTR", "TMUS"],
         "Energy": ["XOM", "CVX", "COP", "SLB", "EOG", "PXD", "OXY", "MPC", "PSX", "VLO"],
         "Industrials": ["GE", "BA", "CAT", "DE", "HON", "LMT", "UNP", "UPS", "FDX", "MMM"],
         "Industrial": ["GE", "BA", "CAT", "DE", "HON", "LMT", "UNP", "UPS", "FDX", "MMM"],
