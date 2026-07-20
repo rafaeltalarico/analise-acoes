@@ -6,100 +6,170 @@ interface Props {
 }
 
 const SECTIONS = [
-  { key: 'value'    as const, label: 'Valuation',  color: 'blue'   },
-  { key: 'future'   as const, label: 'Future',     color: 'green'  },
-  { key: 'past'     as const, label: 'Past',       color: 'purple' },
-  { key: 'health'   as const, label: 'Health',     color: 'orange' },
-  { key: 'dividend' as const, label: 'Dividends',  color: 'pink'   },
+  { key: 'value' as const, label: 'Valuation'},
+  { key: 'future' as const, label: 'Future Growth' },
+  { key: 'past' as const, label: 'Past Performance' },
+  { key: 'health' as const, label: 'Financial Health' },
+  { key: 'dividend' as const, label: 'Dividends' },
+  { key: 'management' as const, label: 'Management' },
 ] as const;
 
-// Dark-theme colour palette per section
-const COLORS: Record<string, {
-  header: string; border: string; badge: string; text: string;
-  bar: string; barBg: string;
-}> = {
-  blue:   { header: '#0e1f3d', border: '#1e3d7b', badge: '#1e3d7b', text: '#60a5fa', bar: '#3b82f6', barBg: '#0e1f3d' },
-  green:  { header: '#0a2518', border: '#145a2d', badge: '#145a2d', text: '#4ade80', bar: '#22c55e', barBg: '#0a2518' },
-  purple: { header: '#160c35', border: '#3a1a7a', badge: '#3a1a7a', text: '#a78bfa', bar: '#8b5cf6', barBg: '#160c35' },
-  orange: { header: '#231108', border: '#5c2e08', badge: '#5c2e08', text: '#fb923c', bar: '#f97316', barBg: '#231108' },
-  pink:   { header: '#220a18', border: '#5c1430', badge: '#5c1430', text: '#f472b6', bar: '#ec4899', barBg: '#220a18' },
+// Cores profissionais - tons neutros com variação sutil
+const SECTION_STYLES = {
+  value: { accent: '#2563eb', bg: '#0a1628' },      // Azul
+  future: { accent: '#059669', bg: '#0a1a14' },     // Verde
+  past: { accent: '#7c3aed', bg: '#160c2a' },       // Roxo
+  health: { accent: '#d97706', bg: '#1a1008' },     // Âmbar
+  dividend: { accent: '#dc2626', bg: '#1a0808' },   // Vermelho
+  management: { accent: '#6b7280', bg: '#0f1117' }, // Cinza
 };
 
-const C_CHECK_BG  = '#0d1117';
-const C_DIVIDER   = '#1e2640';
-const C_CHECK_TXT = '#d0d8e8';
-const C_CHECK_DIM = '#6b7280';
+// Paleta de cores principal - profissional
+const COLORS = {
+  bg: '#0a0e14',
+  bgCard: '#111827',
+  bgHover: '#1a2332',
+  border: '#1e2a3a',
+  borderLight: '#2a3a4a',
+  text: '#e5e9f0',
+  textSecondary: '#8896a8',
+  textDim: '#5a6a7a',
+  success: '#34d399',
+  successBg: '#0a1f14',
+  danger: '#f87171',
+  dangerBg: '#1f0a0a',
+  neutral: '#6b7280',
+  neutralBg: '#111827',
+  scoreHigh: '#34d399',
+  scoreMid: '#fbbf24',
+  scoreLow: '#f87171',
+};
 
 function CheckIcon({ passed }: { passed: boolean | null }) {
-  if (passed === true)  return <span style={{ color: '#4ade80', fontWeight: 700, fontSize: 15 }}>✓</span>;
-  if (passed === false) return <span style={{ color: '#f87171', fontWeight: 700, fontSize: 15 }}>✗</span>;
-  return <span style={{ color: '#4b5563', fontSize: 15 }}>—</span>;
+  if (passed === true) {
+    return <span style={{ color: COLORS.success, fontWeight: 600, fontSize: 14 }}>✓</span>;
+  }
+  if (passed === false) {
+    return <span style={{ color: COLORS.danger, fontWeight: 600, fontSize: 14 }}>✗</span>;
+  }
+  return <span style={{ color: COLORS.textDim, fontSize: 14 }}>–</span>;
 }
 
-function ScoreBar({ score, max, barColor }: { score: number; max: number; barColor: string }) {
+function ScoreBadge({ score, max }: { score: number; max: number }) {
   const pct = max > 0 ? Math.round((score / max) * 100) : 0;
-  const fill = pct >= 67 ? '#22c55e' : pct >= 34 ? '#eab308' : '#ef4444';
+  
+  let color = COLORS.scoreMid;
+  let label = 'Médio';
+  if (pct >= 67) { color = COLORS.scoreHigh; label = 'Bom'; }
+  else if (pct >= 34) { color = COLORS.scoreMid; label = 'Regular'; }
+  else { color = COLORS.scoreLow; label = 'Fraco'; }
+
   return (
-    <div className="flex items-center gap-2 flex-1">
-      <div className="flex-1 rounded-full h-1.5" style={{ background: 'rgba(255,255,255,0.08)' }}>
-        <div
-          className="h-1.5 rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, background: fill }}
-        />
-      </div>
+    <div className="flex items-center gap-2">
+      <span className="text-xs font-medium" style={{ color: COLORS.textSecondary }}>
+        {score}/{max}
+      </span>
+      <span
+        className="text-xs font-semibold px-2 py-0.5 rounded"
+        style={{ 
+          background: 'rgba(255,255,255,0.05)', 
+          color: color,
+          border: `1px solid ${color}33`
+        }}
+      >
+        {label}
+      </span>
     </div>
   );
 }
 
-function Panel({ label, group, color }: { label: string; group: SnowflakeGroup; color: string }) {
-  const [open, setOpen] = useState(false);
-  const cls = COLORS[color] ?? COLORS.blue;
+function ScoreBar({ score, max }: { score: number; max: number }) {
+  const pct = max > 0 ? Math.round((score / max) * 100) : 0;
+  
+  let fill = COLORS.scoreMid;
+  if (pct >= 67) fill = COLORS.scoreHigh;
+  else if (pct < 34) fill = COLORS.scoreLow;
+
+  return (
+    <div className="flex-1">
+      <div 
+        className="h-1.5 rounded-full transition-all duration-500"
+        style={{ 
+          width: `${pct}%`, 
+          background: fill,
+          boxShadow: `0 0 8px ${fill}44`
+        }}
+      />
+    </div>
+  );
+}
+
+function Panel({ 
+  section, 
+  group, 
+  isOpen, 
+  onToggle 
+}: { 
+  section: typeof SECTIONS[number];
+  group: SnowflakeGroup;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const style = SECTION_STYLES[section.key];
 
   return (
     <div
-      className="rounded-xl overflow-hidden"
-      style={{ border: `1px solid ${cls.border}` }}
+      className="rounded-lg overflow-hidden transition-all duration-200"
+      style={{ 
+        border: `1px solid ${isOpen ? style.accent + '44' : COLORS.border}`,
+        background: COLORS.bgCard,
+      }}
     >
+      {/* Header */}
       <button
-        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-opacity hover:opacity-90"
-        style={{ background: cls.header }}
-        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-opacity-80"
+        style={{ background: isOpen ? style.bg : 'transparent' }}
+        onClick={onToggle}
       >
-        <span
-          className="text-sm font-semibold shrink-0"
-          style={{ color: cls.text, width: 100 }}
-        >
-          {label}
+        
+        <span className="text-sm font-medium shrink-0" style={{ color: COLORS.text, minWidth: 120 }}>
+          {section.label}
         </span>
-        <ScoreBar score={group.score} max={group.max} barColor={cls.bar} />
-        <span
-          className="text-xs font-semibold px-2 py-0.5 rounded-full shrink-0"
-          style={{ background: cls.badge, color: cls.text }}
+        
+        <ScoreBar score={group.score} max={group.max} />
+        
+        <ScoreBadge score={group.score} max={group.max} />
+        
+        <span 
+          className="text-xs transition-transform duration-200 shrink-0"
+          style={{ color: COLORS.textDim, transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
         >
-          {group.score}/{group.max}
-        </span>
-        <span className="text-xs shrink-0" style={{ color: cls.text }}>
-          {open ? '▲' : '▼'}
+          ▼
         </span>
       </button>
 
-      {open && (
-        <div style={{ background: C_CHECK_BG }}>
-          {group.checks.map((c: SnowflakeCheck, i) => (
+      {/* Body - Checks List */}
+      {isOpen && (
+        <div className="px-4 pb-3 pt-1">
+          {group.checks.map((check: SnowflakeCheck, index: number) => (
             <div
-              key={c.key}
-              className="flex items-start gap-3 px-4 py-3"
+              key={check.key}
+              className="flex items-start gap-3 py-2.5"
               style={{
-                borderTop: i === 0 ? `1px solid ${C_DIVIDER}` : undefined,
-                borderBottom: i < group.checks.length - 1 ? `1px solid ${C_DIVIDER}` : undefined,
+                borderTop: index === 0 ? 'none' : `1px solid ${COLORS.border}`,
               }}
             >
               <div className="mt-0.5 shrink-0 w-5 text-center">
-                <CheckIcon passed={c.passed} />
+                <CheckIcon passed={check.passed} />
               </div>
+              
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium" style={{ color: C_CHECK_TXT }}>{c.label}</p>
-                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: C_CHECK_DIM }}>{c.detail}</p>
+                <p className="text-sm font-medium" style={{ color: COLORS.text }}>
+                  {check.label}
+                </p>
+                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: COLORS.textSecondary }}>
+                  {check.detail}
+                </p>
               </div>
             </div>
           ))}
@@ -110,11 +180,28 @@ function Panel({ label, group, color }: { label: string; group: SnowflakeGroup; 
 }
 
 export function SnowflakeSection({ data }: Props) {
+  const [openSection, setOpenSection] = useState<string | null>(null);
+
+  const toggleSection = (key: string) => {
+    setOpenSection(openSection === key ? null : key);
+  };
+
   return (
     <div className="space-y-2">
-      {SECTIONS.map(({ key, label, color }) => (
-        <Panel key={key} label={label} group={data[key]} color={color} />
-      ))}
+      {SECTIONS.map((section) => {
+        const group = data[section.key];
+        if (!group) return null;
+        
+        return (
+          <Panel
+            key={section.key}
+            section={section}
+            group={group}
+            isOpen={openSection === section.key}
+            onToggle={() => toggleSection(section.key)}
+          />
+        );
+      })}
     </div>
   );
 }

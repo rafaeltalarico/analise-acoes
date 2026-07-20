@@ -10,9 +10,9 @@ const CX   = SIZE / 2;   // 150
 const CY   = SIZE / 2;   // 150
 const HALF = SIZE / 2;   // 150
 
-const BG_R    = HALF * 0.970;  // 138
-const MAX_R   = HALF * 0.620;  // 78
-const LABEL_R = HALF * 0.633;  // 95
+const BG_R    = HALF * 0.999;  // 138
+const MAX_R   = HALF * 0.630;  // 78
+const LABEL_R = HALF * 0.703;  // 95
 
 // ─────────────────────────────────────────────────────────────────────────────
 // § Palette
