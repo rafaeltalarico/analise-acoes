@@ -335,13 +335,12 @@ async def get_stock_data(ticker: str) -> Dict[str, Any]:
 
     try:
         pt = stock.analyst_price_targets
-        if pt is not None and not pt.empty:
-            row = pt.iloc[0] if isinstance(pt, pd.DataFrame) else pt
+        if pt and isinstance(pt, dict):
             analysts_data["price_target"] = {
                 "current": current_price,
-                "mean": safe_float(row.get("mean") if hasattr(row, "get") else None),
-                "low": safe_float(row.get("low") if hasattr(row, "get") else None),
-                "high": safe_float(row.get("high") if hasattr(row, "get") else None),
+                "mean": safe_float(pt.get("mean")),
+                "low": safe_float(pt.get("low")),
+                "high": safe_float(pt.get("high")),
             }
     except Exception:
         pass
