@@ -121,14 +121,38 @@ async def analyze(ticker: str):
         industry = info.get("industry", "N/A")
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         
-        # Dados de analistas (simplificados)
+        # Price target dos analistas
+        def _f(v):
+            try:
+                return round(float(v), 2) if v is not None else None
+            except Exception:
+                return None
+
+        price_target = {
+            "current": _f(price),
+            "mean":    _f(info.get("targetMeanPrice")),
+            "low":     None,
+            "high":    None,
+        }
+        try:
+            pt = stock.analyst_price_targets
+            if pt is not None and not pt.empty:
+                row = pt.iloc[0] if hasattr(pt, "iloc") else pt
+                g   = lambda k: row.get(k) if hasattr(row, "get") else None
+                price_target["mean"] = _f(g("mean")) or price_target["mean"]
+                price_target["low"]  = _f(g("low"))
+                price_target["high"] = _f(g("high"))
+        except Exception as e:
+            print(f"⚠️ Erro ao buscar analyst_price_targets: {e}")
+
         analysts = {
-            "recommendation": info.get("recommendationKey", "N/A"),
-            "target_mean": info.get("targetMeanPrice"),
-            "number_of_analysts": info.get("numberOfAnalystOpinions")
+            "price_target":       price_target,
+            "recommendation":     info.get("recommendationKey", "N/A"),
+            "number_of_analysts": info.get("numberOfAnalystOpinions"),
         }
         print(f"🏢 Empresa: {company_name}")
         print(f"💰 Preço: ${price}")
+        print(f"🎯 Price target médio: ${price_target['mean']}")
         print(f"📊 Recomendação: {analysts['recommendation']}")
     except Exception as e:
         print(f"⚠️ Erro ao buscar dados básicos: {e}")

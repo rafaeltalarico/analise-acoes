@@ -105,7 +105,7 @@ export interface EarningsEstimates {
 }
 
 export interface Analysts {
-  price_target: PriceTarget;
+  price_target?: PriceTarget;
   recommendations: Recommendations;
   recent_actions: RecentAction[];
   earnings_estimates: EarningsEstimates;
