@@ -122,13 +122,46 @@ async def analyze(ticker: str):
         industry = info.get("industry", "N/A")
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         
-        # Price target dos analistas
         def _f(v):
             try:
                 return round(float(v), 2) if v is not None else None
             except Exception:
                 return None
 
+        def _fmt_large(v):
+            try:
+                n = float(v)
+                if n >= 1_000_000_000_000: return f"{n/1e12:.2f}T"
+                if n >= 1_000_000_000:     return f"{n/1e9:.2f}B"
+                if n >= 1_000_000:         return f"{n/1e6:.2f}M"
+                return f"{n:,.0f}"
+            except Exception:
+                return None
+
+        # Complete price data for frontend
+        change_amount  = _f(info.get("regularMarketChange"))
+        prev_close_val = _f(info.get("previousClose"))
+        change_pct_val = (
+            round(change_amount / prev_close_val * 100, 2)
+            if change_amount is not None and prev_close_val
+            else None
+        )
+        price_data = {
+            "current":     _f(price),
+            "change":      change_amount,
+            "change_pct":  change_pct_val,
+            "prev_close":  _f(info.get("open")),
+            "day_high":    _f(info.get("dayHigh")),
+            "day_low":     _f(info.get("dayLow")),
+            "week52_high": _f(info.get("fiftyTwoWeekHigh")),
+            "week52_low":  _f(info.get("fiftyTwoWeekLow")),
+            "market_cap":  _fmt_large(info.get("marketCap")),
+            "avg_volume":  _fmt_large(info.get("averageVolume")),
+            "beta":        _f(info.get("beta")),
+            "currency":    info.get("currency", "USD"),
+        }
+
+        # Price target dos analistas
         price_target = {
             "current": _f(price),
             "mean":    _f(info.get("targetMeanPrice")),
@@ -142,7 +175,7 @@ async def analyze(ticker: str):
             "number_of_analysts": info.get("numberOfAnalystOpinions"),
         }
         print(f"🏢 Empresa: {company_name}")
-        print(f"💰 Preço: ${price}")
+        print(f"💰 Preço: ${price} | Change: {change_amount} ({change_pct_val}%)")
         print(f"🎯 Price target: low=${price_target['low']} mean=${price_target['mean']} high=${price_target['high']}")
         print(f"📊 Recomendação: {analysts['recommendation']}")
 
@@ -166,6 +199,7 @@ async def analyze(ticker: str):
         sector = "N/A"
         industry = "N/A"
         price = None
+        price_data = {"current": None, "currency": "USD"}
         analysts = {}
         history = []
 
@@ -195,10 +229,7 @@ async def analyze(ticker: str):
         "company_name": company_name,
         "sector": sector,
         "industry": industry,
-        "price": {
-            "current": price,
-            "currency": "USD"
-        },
+        "price": price_data,
         "scores": scores,
         "metrics": {},
         "metrics_summary": metrics_summary,

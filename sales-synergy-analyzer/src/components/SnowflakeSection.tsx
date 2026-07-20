@@ -6,34 +6,46 @@ interface Props {
 }
 
 const SECTIONS = [
-  { key: 'value'    as const, label: 'Valuation',           color: 'blue'   },
-  { key: 'future'   as const, label: 'Future',  color: 'green'  },
-  { key: 'past'     as const, label: 'Past', color: 'purple' },
-  { key: 'health'   as const, label: 'Health',    color: 'orange' },
-  { key: 'dividend' as const, label: 'Dividends',          color: 'pink'   },
+  { key: 'value'    as const, label: 'Valuation',  color: 'blue'   },
+  { key: 'future'   as const, label: 'Future',     color: 'green'  },
+  { key: 'past'     as const, label: 'Past',       color: 'purple' },
+  { key: 'health'   as const, label: 'Health',     color: 'orange' },
+  { key: 'dividend' as const, label: 'Dividends',  color: 'pink'   },
 ] as const;
 
-const COLORS: Record<string, { header: string; border: string; badge: string; text: string }> = {
-  blue:   { header: 'bg-blue-50',   border: 'border-blue-200',   badge: 'bg-blue-100 text-blue-700',   text: 'text-blue-700'   },
-  green:  { header: 'bg-green-50',  border: 'border-green-200',  badge: 'bg-green-100 text-green-700', text: 'text-green-700'  },
-  purple: { header: 'bg-purple-50', border: 'border-purple-200', badge: 'bg-purple-100 text-purple-700', text: 'text-purple-700' },
-  orange: { header: 'bg-orange-50', border: 'border-orange-200', badge: 'bg-orange-100 text-orange-700', text: 'text-orange-700' },
-  pink:   { header: 'bg-pink-50',   border: 'border-pink-200',   badge: 'bg-pink-100 text-pink-700',   text: 'text-pink-700'   },
+// Dark-theme colour palette per section
+const COLORS: Record<string, {
+  header: string; border: string; badge: string; text: string;
+  bar: string; barBg: string;
+}> = {
+  blue:   { header: '#0e1f3d', border: '#1e3d7b', badge: '#1e3d7b', text: '#60a5fa', bar: '#3b82f6', barBg: '#0e1f3d' },
+  green:  { header: '#0a2518', border: '#145a2d', badge: '#145a2d', text: '#4ade80', bar: '#22c55e', barBg: '#0a2518' },
+  purple: { header: '#160c35', border: '#3a1a7a', badge: '#3a1a7a', text: '#a78bfa', bar: '#8b5cf6', barBg: '#160c35' },
+  orange: { header: '#231108', border: '#5c2e08', badge: '#5c2e08', text: '#fb923c', bar: '#f97316', barBg: '#231108' },
+  pink:   { header: '#220a18', border: '#5c1430', badge: '#5c1430', text: '#f472b6', bar: '#ec4899', barBg: '#220a18' },
 };
 
+const C_CHECK_BG  = '#0d1117';
+const C_DIVIDER   = '#1e2640';
+const C_CHECK_TXT = '#d0d8e8';
+const C_CHECK_DIM = '#6b7280';
+
 function CheckIcon({ passed }: { passed: boolean | null }) {
-  if (passed === true)  return <span className="text-green-500 font-bold text-base">✓</span>;
-  if (passed === false) return <span className="text-red-400 font-bold text-base">✗</span>;
-  return <span className="text-gray-400 text-base">—</span>;
+  if (passed === true)  return <span style={{ color: '#4ade80', fontWeight: 700, fontSize: 15 }}>✓</span>;
+  if (passed === false) return <span style={{ color: '#f87171', fontWeight: 700, fontSize: 15 }}>✗</span>;
+  return <span style={{ color: '#4b5563', fontSize: 15 }}>—</span>;
 }
 
-function ScoreBar({ score, max }: { score: number; max: number }) {
+function ScoreBar({ score, max, barColor }: { score: number; max: number; barColor: string }) {
   const pct = max > 0 ? Math.round((score / max) * 100) : 0;
-  const fill = pct >= 67 ? 'bg-green-500' : pct >= 34 ? 'bg-yellow-400' : 'bg-red-400';
+  const fill = pct >= 67 ? '#22c55e' : pct >= 34 ? '#eab308' : '#ef4444';
   return (
     <div className="flex items-center gap-2 flex-1">
-      <div className="flex-1 bg-gray-200 rounded-full h-1.5">
-        <div className={`h-1.5 rounded-full ${fill} transition-all duration-500`} style={{ width: `${pct}%` }} />
+      <div className="flex-1 rounded-full h-1.5" style={{ background: 'rgba(255,255,255,0.08)' }}>
+        <div
+          className="h-1.5 rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, background: fill }}
+        />
       </div>
     </div>
   );
@@ -44,29 +56,50 @@ function Panel({ label, group, color }: { label: string; group: SnowflakeGroup; 
   const cls = COLORS[color] ?? COLORS.blue;
 
   return (
-    <div className={`rounded-xl border ${cls.border} overflow-hidden`}>
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: `1px solid ${cls.border}` }}
+    >
       <button
-        className={`w-full flex items-center gap-3 px-4 py-3 ${cls.header} hover:opacity-90 transition text-left`}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left transition-opacity hover:opacity-90"
+        style={{ background: cls.header }}
         onClick={() => setOpen(o => !o)}
       >
-        <span className={`text-sm font-semibold ${cls.text} w-40 shrink-0`}>{label}</span>
-        <ScoreBar score={group.score} max={group.max} />
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${cls.badge}`}>
+        <span
+          className="text-sm font-semibold shrink-0"
+          style={{ color: cls.text, width: 100 }}
+        >
+          {label}
+        </span>
+        <ScoreBar score={group.score} max={group.max} barColor={cls.bar} />
+        <span
+          className="text-xs font-semibold px-2 py-0.5 rounded-full shrink-0"
+          style={{ background: cls.badge, color: cls.text }}
+        >
           {group.score}/{group.max}
         </span>
-        <span className={`text-xs ${cls.text} shrink-0`}>{open ? '▲' : '▼'}</span>
+        <span className="text-xs shrink-0" style={{ color: cls.text }}>
+          {open ? '▲' : '▼'}
+        </span>
       </button>
 
       {open && (
-        <div className="divide-y divide-gray-100">
-          {group.checks.map((c: SnowflakeCheck) => (
-            <div key={c.key} className="flex items-start gap-3 px-4 py-3 bg-white">
+        <div style={{ background: C_CHECK_BG }}>
+          {group.checks.map((c: SnowflakeCheck, i) => (
+            <div
+              key={c.key}
+              className="flex items-start gap-3 px-4 py-3"
+              style={{
+                borderTop: i === 0 ? `1px solid ${C_DIVIDER}` : undefined,
+                borderBottom: i < group.checks.length - 1 ? `1px solid ${C_DIVIDER}` : undefined,
+              }}
+            >
               <div className="mt-0.5 shrink-0 w-5 text-center">
                 <CheckIcon passed={c.passed} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800">{c.label}</p>
-                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{c.detail}</p>
+                <p className="text-sm font-medium" style={{ color: C_CHECK_TXT }}>{c.label}</p>
+                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: C_CHECK_DIM }}>{c.detail}</p>
               </div>
             </div>
           ))}
@@ -77,8 +110,6 @@ function Panel({ label, group, color }: { label: string; group: SnowflakeGroup; 
 }
 
 export function SnowflakeSection({ data }: Props) {
-  const [mgmtOpen, setMgmtOpen] = useState(false);
-
   return (
     <div className="space-y-2">
       {SECTIONS.map(({ key, label, color }) => (

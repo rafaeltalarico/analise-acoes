@@ -22,14 +22,21 @@ export function SearchBar({ onSearch, loading }: Props) {
         onChange={e => setValue(e.target.value.toUpperCase())}
         placeholder="Ticker americano (ex: AAPL, MSFT)"
         disabled={loading}
-        className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-100 uppercase"
         maxLength={10}
+        className="flex-1 px-4 py-2.5 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none uppercase"
+        style={{
+          background: '#0a0e1a',
+          border: '1px solid #1e2640',
+          transition: 'border-color 0.15s',
+        }}
+        onFocus={e  => (e.currentTarget.style.borderColor = '#378ADD')}
+        onBlur={e   => (e.currentTarget.style.borderColor = '#1e2640')}
       />
       <button
         type="submit"
         disabled={loading || !value.trim()}
-        className="px-6 py-3 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        style={{ backgroundColor: '#378ADD' }}
+        className="px-5 py-2.5 text-white rounded-lg font-medium text-sm transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{ background: '#378ADD' }}
       >
         {loading ? '...' : 'Analisar'}
       </button>

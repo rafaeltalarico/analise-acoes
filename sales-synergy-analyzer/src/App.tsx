@@ -44,9 +44,15 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-white" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div
+      className="min-h-screen"
+      style={{ background: '#0d1117', fontFamily: 'system-ui, -apple-system, sans-serif' }}
+    >
       {/* Top bar */}
-      <div className="border-b border-gray-200 bg-white sticky top-0 z-10">
+      <div
+        className="sticky top-0 z-10"
+        style={{ background: '#0d1117', borderBottom: '1px solid #1e2640' }}
+      >
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center gap-4">
           <div className="flex items-center gap-2 flex-shrink-0">
             <div
@@ -55,7 +61,7 @@ export default function App() {
             >
               $
             </div>
-            <span className="font-bold text-gray-800">StockAnalyzer</span>
+            <span className="font-bold text-white">StockAnalyzer</span>
           </div>
           <div className="flex-1 w-full sm:max-w-md">
             <SearchBar onSearch={handleSearch} loading={loading} />
@@ -67,17 +73,23 @@ export default function App() {
         {/* Loading */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-16">
-            <div className="w-10 h-10 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mb-6" />
+            <div
+              className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin mb-6"
+              style={{ borderColor: '#378ADD', borderTopColor: 'transparent' }}
+            />
             <StepIndicator currentStep={step} />
           </div>
         )}
 
         {/* Error */}
         {error && !loading && (
-          <div className="max-w-md mx-auto mt-12 p-6 border border-red-200 rounded-xl bg-red-50">
-            <h3 className="font-semibold text-red-700 mb-1">Erro na análise</h3>
-            <p className="text-sm text-red-600">{error}</p>
-            <p className="text-xs text-gray-400 mt-3">Verifique se o ticker está correto (ex: AAPL, MSFT, GOOGL)</p>
+          <div
+            className="max-w-md mx-auto mt-12 p-6 rounded-xl"
+            style={{ background: '#1a0f0f', border: '1px solid #4b1515' }}
+          >
+            <h3 className="font-semibold text-red-400 mb-1">Erro na análise</h3>
+            <p className="text-sm text-red-300">{error}</p>
+            <p className="text-xs text-gray-500 mt-3">Verifique se o ticker está correto (ex: AAPL, MSFT, GOOGL)</p>
           </div>
         )}
 
@@ -85,8 +97,8 @@ export default function App() {
         {!loading && !data && !error && (
           <div className="text-center py-24">
             <div className="text-6xl mb-4">📈</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Análise de Ações</h2>
-            <p className="text-gray-500 max-w-md mx-auto">
+            <h2 className="text-2xl font-bold text-gray-100 mb-2">Análise de Ações</h2>
+            <p className="text-gray-400 max-w-md mx-auto">
               Digite um ticker americano para obter análise com gráfico interativo e modelo Snowflake.
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -94,7 +106,10 @@ export default function App() {
                 <button
                   key={t}
                   onClick={() => handleSearch(t)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                  className="px-4 py-2 rounded-lg text-sm text-gray-300 transition-colors"
+                  style={{ border: '1px solid #1e2640', background: 'transparent' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#161c2c')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
                   {t}
                 </button>
@@ -106,15 +121,14 @@ export default function App() {
         {/* Results */}
         {data && !loading && (
           <>
-            {/* Gráfico + cabeçalho de preço */}
             <PriceHeader data={data} />
 
             {/* Snowflake */}
             {data.snowflake ? (
               <div className="mt-8">
-                <h2 className="text-lg font-semibold text-gray-700 mb-6">Análise Snowflake</h2>
+                <h2 className="text-lg font-semibold text-gray-200 mb-6">Análise Snowflake</h2>
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-                  <div className="lg:col-span-2 flex items-center justify-center py-2">
+                  <div className="lg:col-span-2 flex items-start justify-center">
                     <SnowflakeChart data={data.snowflake} />
                   </div>
                   <div className="lg:col-span-3">
@@ -123,7 +137,10 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <div className="mt-6 p-4 border border-yellow-200 rounded-xl bg-yellow-50 text-sm text-yellow-700">
+              <div
+                className="mt-6 p-4 rounded-xl text-sm"
+                style={{ background: '#1a1500', border: '1px solid #4b3900', color: '#d4a017' }}
+              >
                 Análise Snowflake indisponível para este ticker.
               </div>
             )}
@@ -131,7 +148,7 @@ export default function App() {
             {/* Price Target Chart */}
             {data.analysts?.price_target && data.history && data.history.length > 0 && (
               <div className="mt-8">
-                <h2 className="text-lg font-semibold text-gray-700 mb-3">Price Target dos Analistas</h2>
+                <h2 className="text-lg font-semibold text-gray-200 mb-3">Price Target dos Analistas</h2>
                 <PriceTargetChart
                   ticker={data.ticker}
                   history={data.history}
@@ -140,8 +157,11 @@ export default function App() {
               </div>
             )}
 
-            {/* Rodapé */}
-            <div className="border-t border-gray-100 pt-6 mt-8 flex flex-wrap justify-between items-center text-xs text-gray-400 gap-2">
+            {/* Footer */}
+            <div
+              className="pt-6 mt-8 flex flex-wrap justify-between items-center text-xs text-gray-500 gap-2"
+              style={{ borderTop: '1px solid #1e2640' }}
+            >
               <div>Fontes: {data.sources.join(' • ')}</div>
               <div>Atualizado em: {new Date(data.timestamp).toLocaleString('pt-BR')}</div>
             </div>
