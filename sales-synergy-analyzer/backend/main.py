@@ -111,6 +111,7 @@ async def analyze(ticker: str):
     print(f"\n📈 Score Geral: {total_score}/{total_max} = {overall_score}%")
 
     # Busca dados básicos do Yahoo para compatibilidade
+    history = []
     try:
         import yfinance as yf
         stock = yf.Ticker(ticker)
@@ -131,19 +132,9 @@ async def analyze(ticker: str):
         price_target = {
             "current": _f(price),
             "mean":    _f(info.get("targetMeanPrice")),
-            "low":     None,
-            "high":    None,
+            "low":     _f(info.get("targetLowPrice")),
+            "high":    _f(info.get("targetHighPrice")),
         }
-        try:
-            pt = stock.analyst_price_targets
-            if pt is not None and not pt.empty:
-                row = pt.iloc[0] if hasattr(pt, "iloc") else pt
-                g   = lambda k: row.get(k) if hasattr(row, "get") else None
-                price_target["mean"] = _f(g("mean")) or price_target["mean"]
-                price_target["low"]  = _f(g("low"))
-                price_target["high"] = _f(g("high"))
-        except Exception as e:
-            print(f"⚠️ Erro ao buscar analyst_price_targets: {e}")
 
         analysts = {
             "price_target":       price_target,
@@ -152,8 +143,23 @@ async def analyze(ticker: str):
         }
         print(f"🏢 Empresa: {company_name}")
         print(f"💰 Preço: ${price}")
-        print(f"🎯 Price target médio: ${price_target['mean']}")
+        print(f"🎯 Price target: low=${price_target['low']} mean=${price_target['mean']} high=${price_target['high']}")
         print(f"📊 Recomendação: {analysts['recommendation']}")
+
+        # Histórico de preços (12 meses)
+        history = []
+        try:
+            hist_df = stock.history(period="1y")
+            if not hist_df.empty:
+                for dt, row in hist_df.iterrows():
+                    history.append({
+                        "date": dt.strftime("%Y-%m-%d"),
+                        "close": round(float(row["Close"]), 2),
+                        "volume": int(row["Volume"]),
+                    })
+            print(f"📅 Histórico: {len(history)} pontos")
+        except Exception as e:
+            print(f"⚠️ Erro ao buscar histórico: {e}")
     except Exception as e:
         print(f"⚠️ Erro ao buscar dados básicos: {e}")
         company_name = ticker
@@ -161,6 +167,7 @@ async def analyze(ticker: str):
         industry = "N/A"
         price = None
         analysts = {}
+        history = []
 
     # EXIBE O RESULTADO COMPLETO NO TERMINAL
     print(f"\n{'='*60}")
@@ -203,6 +210,7 @@ async def analyze(ticker: str):
         "peers": peers,
         "snowflake": snowflake_result,
         "overall_score": overall_score,
+        "history": history,
         "sources": ["Yahoo Finance", "Snowflake Analysis"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "success"

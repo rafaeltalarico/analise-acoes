@@ -6,6 +6,7 @@ import { StepIndicator } from './components/StepIndicator';
 import { PriceHeader } from './components/PriceHeader';
 import { SnowflakeChart } from './components/SnowflakeChart';
 import { SnowflakeSection } from './components/SnowflakeSection';
+import { PriceTargetChart } from './components/PriceTargetChart';
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -127,27 +128,15 @@ export default function App() {
               </div>
             )}
 
-            {/* Price Target */}
-            {data.analysts?.price_target && (
+            {/* Price Target Chart */}
+            {data.analysts?.price_target && data.history && data.history.length > 0 && (
               <div className="mt-8">
                 <h2 className="text-lg font-semibold text-gray-700 mb-3">Price Target dos Analistas</h2>
-                <ul className="border border-gray-200 rounded-xl divide-y divide-gray-100 text-sm max-w-xs">
-                  {(
-                    [
-                      { label: 'Preço Atual',  value: data.analysts.price_target.current },
-                      { label: 'Alvo Médio',   value: data.analysts.price_target.mean },
-                      { label: 'Alvo Mínimo',  value: data.analysts.price_target.low },
-                      { label: 'Alvo Máximo',  value: data.analysts.price_target.high },
-                    ] as { label: string; value: number | null }[]
-                  ).map(({ label, value }) => (
-                    <li key={label} className="flex justify-between px-4 py-2.5">
-                      <span className="text-gray-500">{label}</span>
-                      <span className="font-semibold text-gray-800">
-                        {value != null ? `$${value.toFixed(2)}` : '—'}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <PriceTargetChart
+                  ticker={data.ticker}
+                  history={data.history}
+                  priceTarget={data.analysts.price_target}
+                />
               </div>
             )}
 
