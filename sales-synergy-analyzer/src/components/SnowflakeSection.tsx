@@ -11,7 +11,6 @@ const SECTIONS = [
   { key: 'past' as const, label: 'Past Performance' },
   { key: 'health' as const, label: 'Financial Health' },
   { key: 'dividend' as const, label: 'Dividends' },
-  { key: 'management' as const, label: 'Management' },
 ] as const;
 
 // Cores profissionais - tons neutros com variação sutil
@@ -21,7 +20,6 @@ const SECTION_STYLES = {
   past: { accent: '#7c3aed', bg: '#160c2a' },       // Roxo
   health: { accent: '#d97706', bg: '#1a1008' },     // Âmbar
   dividend: { accent: '#dc2626', bg: '#1a0808' },   // Vermelho
-  management: { accent: '#6b7280', bg: '#0f1117' }, // Cinza
 };
 
 // Paleta de cores principal - profissional

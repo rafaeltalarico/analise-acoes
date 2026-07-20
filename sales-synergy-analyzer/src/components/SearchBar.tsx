@@ -20,7 +20,7 @@ export function SearchBar({ onSearch, loading }: Props) {
         type="text"
         value={value}
         onChange={e => setValue(e.target.value.toUpperCase())}
-        placeholder="Ticker americano (ex: AAPL, MSFT)"
+        placeholder="Digite um ticker (ex: AAPL, MSFT)"
         disabled={loading}
         maxLength={10}
         className="flex-1 px-4 py-2.5 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none uppercase"
@@ -36,7 +36,7 @@ export function SearchBar({ onSearch, loading }: Props) {
         type="submit"
         disabled={loading || !value.trim()}
         className="px-5 py-2.5 text-white rounded-lg font-medium text-sm transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-        style={{ background: '#378ADD' }}
+        style={{ background: '#2b5279' }}
       >
         {loading ? '...' : 'Analisar'}
       </button>

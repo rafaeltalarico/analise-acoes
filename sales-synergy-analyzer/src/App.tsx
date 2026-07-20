@@ -7,6 +7,7 @@ import { PriceHeader } from './components/PriceHeader';
 import { SnowflakeChart } from './components/SnowflakeChart';
 import { SnowflakeSection } from './components/SnowflakeSection';
 import { PriceTargetChart } from './components/PriceTargetChart';
+import { ChartNoAxesCombined } from "lucide-react";
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -55,13 +56,12 @@ export default function App() {
       >
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center gap-4">
           <div className="flex items-center gap-2 flex-shrink-0">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold"
-              style={{ backgroundColor: '#378ADD' }}
-            >
-              $
-            </div>
-            <span className="font-bold text-white">StockAnalyzer</span>
+            <ChartNoAxesCombined
+              size={26}
+              strokeWidth={2}
+              className="text-blue-400 flex-shrink-0"
+            />
+            <span className="font-bold text-white">Radar de Ativos</span>
           </div>
           <div className="flex-1 w-full sm:max-w-md">
             <SearchBar onSearch={handleSearch} loading={loading} />
@@ -96,25 +96,10 @@ export default function App() {
         {/* Empty state */}
         {!loading && !data && !error && (
           <div className="text-center py-24">
-            <div className="text-6xl mb-4">📈</div>
-            <h2 className="text-2xl font-bold text-gray-100 mb-2">Análise de Ações</h2>
+            <h2 className="text-2xl font-bold text-gray-100 mb-2">Radar de Ativos</h2>
             <p className="text-gray-400 max-w-md mx-auto">
-              Digite um ticker americano para obter análise com gráfico interativo e modelo Snowflake.
+              Digite um ticker NYSE ou NASDAQ para obter análise com gráfico interativo e modelo Snowflake
             </p>
-            <div className="mt-6 flex flex-wrap justify-center gap-2">
-              {['AAPL', 'MSFT', 'GOOGL', 'SCHW', 'JPM'].map(t => (
-                <button
-                  key={t}
-                  onClick={() => handleSearch(t)}
-                  className="px-4 py-2 rounded-lg text-sm text-gray-300 transition-colors"
-                  style={{ border: '1px solid #1e2640', background: 'transparent' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#161c2c')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
@@ -127,7 +112,7 @@ export default function App() {
             {data.snowflake ? (
               <div className="mt-8">
                 <h2 className="text-lg font-semibold text-gray-200 mb-6">Análise Snowflake</h2>
-                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-center">
                   <div className="lg:col-span-2 flex items-start justify-center">
                     <SnowflakeChart data={data.snowflake} />
                   </div>
