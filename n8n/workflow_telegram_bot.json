@@ -1,0 +1,336 @@
+{
+  "name": "Radar de Ativos - Telegram Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "id": "n1",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "radar-ativos-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the incoming Telegram update and determine what action to take.\nconst u = $input.first().json;\nlet chatId, action, data = {};\n\nif (u.callback_query) {\n  chatId = String(u.callback_query.message.chat.id);\n  const cb = u.callback_query.data || '';\n\n  if (cb === 'menu')               action = 'send_menu';\n  else if (cb === 'buscar_ticker') action = 'ask_ticker';\n  else if (cb === 'buscar_ativos') action = 'send_buscar';\n  else if (cb === 'setores')       action = 'send_sectors';\n  else if (cb === 'ganhos')        { action = 'get_movers'; data = { type: 'gainers' }; }\n  else if (cb === 'perdas')        { action = 'get_movers'; data = { type: 'losers'  }; }\n  else if (cb === 'resumo_dia')    action = 'get_summary';\n  else if (cb.startsWith('setor_'))   { action = 'get_sector'; data = { sector: cb.slice(6) }; }\n  else if (cb.startsWith('analyze_')) { action = 'analyze';    data = { ticker: cb.slice(8) }; }\n  else action = 'send_menu';\n\n} else if (u.message) {\n  chatId = String(u.message.chat.id);\n  const txt = (u.message.text || '').trim().toUpperCase();\n  const menuTriggers = ['/START', '/MENU', 'MENU', 'START', 'OI', 'OLA', 'OLOI', 'INICIO'];\n\n  if (menuTriggers.includes(txt)) {\n    action = 'send_menu';\n  } else if (/^[A-Z]{1,5}(-[A-Z])?$/.test(txt)) {\n    // Matches standard US ticker patterns: AAPL, MSFT, BRK-B\n    action = 'analyze';\n    data = { ticker: txt };\n  } else {\n    action = 'send_menu';\n  }\n} else {\n  return [];\n}\n\nreturn [{ json: { chatId, action, data } }];"
+      },
+      "id": "n2",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.action }}",
+        "rules": {
+          "rules": [
+            {"value2": "send_menu",    "output": 0},
+            {"value2": "ask_ticker",   "output": 1},
+            {"value2": "send_buscar",  "output": 2},
+            {"value2": "send_sectors", "output": 3},
+            {"value2": "get_movers",   "output": 4},
+            {"value2": "get_sector",   "output": 5},
+            {"value2": "get_summary",  "output": 6},
+            {"value2": "analyze",      "output": 7}
+          ]
+        },
+        "fallbackOutput": 0
+      },
+      "id": "n3",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "Ol\u00e1! Bem-vindo ao <b>\ud83d\udcca Radar de Ativos</b>.\n\nEscolha uma op\u00e7\u00e3o abaixo:",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"\ud83d\udcca Analisar Ativo (Ticker)\",\"callback_data\":\"buscar_ticker\"}],[{\"text\":\"\ud83d\udd0d Buscar Ativos\",\"callback_data\":\"buscar_ativos\"}],[{\"text\":\"\ud83d\udccb Resumo do Dia\",\"callback_data\":\"resumo_dia\"}]]}"
+        }
+      },
+      "id": "n4",
+      "name": "Send Main Menu",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 60],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "\ud83d\udcca <b>Analisar Ativo</b>\n\nDigite o ticker do ativo que deseja analisar:\n\n<i>Exemplos: AAPL, MSFT, GOOGL, NVDA, AMZN</i>",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"\ud83d\udd19 Menu Principal\",\"callback_data\":\"menu\"}]]}"
+        }
+      },
+      "id": "n5",
+      "name": "Ask Ticker",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 180],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "\ud83d\udd0d <b>Buscar Ativos</b>\n\nComo voc\u00ea deseja buscar?",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"\ud83d\udcc8 Principais Ganhos\",\"callback_data\":\"ganhos\"},{\"text\":\"\ud83d\udcc9 Principais Perdas\",\"callback_data\":\"perdas\"}],[{\"text\":\"\ud83c\udfe3 Por Setor\",\"callback_data\":\"setores\"}],[{\"text\":\"\ud83d\udd19 Menu Principal\",\"callback_data\":\"menu\"}]]}"
+        }
+      },
+      "id": "n6",
+      "name": "Send Buscar Menu",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "\ud83c\udfe3 <b>Escolha o Setor:</b>",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"\ud83d\udcbb Technology\",\"callback_data\":\"setor_Technology\"},{\"text\":\"\ud83c\udfe5 Healthcare\",\"callback_data\":\"setor_Healthcare\"}],[{\"text\":\"\ud83c\udfe6 Financial Services\",\"callback_data\":\"setor_Financial Services\"},{\"text\":\"\ud83d\uded2 Consumer Cyclical\",\"callback_data\":\"setor_Consumer Cyclical\"}],[{\"text\":\"\ud83d\udce1 Communication\",\"callback_data\":\"setor_Communication Services\"},{\"text\":\"\u26fd Energy\",\"callback_data\":\"setor_Energy\"}],[{\"text\":\"\ud83c\udfe7 Industrials\",\"callback_data\":\"setor_Industrials\"},{\"text\":\"\ud83d\uded2 Consumer Defensive\",\"callback_data\":\"setor_Consumer Defensive\"}],[{\"text\":\"\ud83d\udca1 Utilities\",\"callback_data\":\"setor_Utilities\"},{\"text\":\"\ud83c\udfe0 Real Estate\",\"callback_data\":\"setor_Real Estate\"}],[{\"text\":\"\ud83d\udd19 Voltar\",\"callback_data\":\"buscar_ativos\"}]]}"
+        }
+      },
+      "id": "n7",
+      "name": "Send Sector Menu",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 420],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ 'YOUR_API_URL/api/market/movers?type=' + $json.data.type + '&limit=7' }}",
+        "options": {}
+      },
+      "id": "n8",
+      "name": "Get Movers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 540]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nconst chatId = $node['Parse Input'].json.chatId;\nconst type = res.type;\nconst results = res.results || [];\n\nconst icon  = type === 'gainers' ? '\ud83d\udcc8' : '\ud83d\udcc9';\nconst title = type === 'gainers' ? 'PRINCIPAIS GANHOS' : 'PRINCIPAIS PERDAS';\n\nlet text = `<b>${icon} ${title} \u2014 ${res.date || ''}</b>\\n\\n`;\nresults.forEach((s, i) => {\n  const sign = s.change_pct >= 0 ? '+' : '';\n  text += `${i + 1}. <b>${s.ticker}</b>  $${s.price}  ${sign}${s.change_pct}%\\n`;\n});\ntext += '\\n<i>Toque em um ativo para an\u00e1lise completa:</i>';\n\nconst keyboard = results.map(s => ([{\n  text: `${s.ticker}  ${s.change_pct >= 0 ? '\ud83d\udcc8 +' : '\ud83d\udcc9 '}${s.change_pct}%`,\n  callback_data: `analyze_${s.ticker}`\n}]));\nkeyboard.push([{ text: '\ud83d\udd19 Voltar', callback_data: 'buscar_ativos' }]);\n\nreturn [{ json: {\n  chatId,\n  text,\n  replyMarkup: JSON.stringify({ inline_keyboard: keyboard })\n} }];"
+      },
+      "id": "n9",
+      "name": "Format Movers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 540]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "={{ $json.replyMarkup }}"
+        }
+      },
+      "id": "n10",
+      "name": "Send Movers List",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1340, 540],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ 'YOUR_API_URL/api/market/sector/' + encodeURIComponent($json.data.sector) + '?limit=7' }}",
+        "options": {}
+      },
+      "id": "n11",
+      "name": "Get Sector Stocks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 660]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nconst chatId = $node['Parse Input'].json.chatId;\nconst sector = res.sector || 'Setor';\nconst results = res.results || [];\n\nlet text = `<b>\ud83c\udfe3 ${sector}</b>\\n\\n`;\nresults.forEach((s, i) => {\n  const chg = s.change_pct != null\n    ? ` ${s.change_pct >= 0 ? '\ud83d\udcc8 +' : '\ud83d\udcc9 '}${s.change_pct}%`\n    : '';\n  text += `${i + 1}. <b>${s.ticker}</b>  $${s.price}${chg}\\n`;\n});\ntext += '\\n<i>Toque em um ativo para an\u00e1lise completa:</i>';\n\nconst keyboard = results.map(s => ([{\n  text: `${s.ticker}  $${s.price}${s.change_pct != null ? (s.change_pct >= 0 ? ' \ud83d\udcc8' : ' \ud83d\udcc9') : ''}`,\n  callback_data: `analyze_${s.ticker}`\n}]));\nkeyboard.push([\n  { text: '\ud83c\udfe3 Outros Setores', callback_data: 'setores' },\n  { text: '\ud83d\udd19 Voltar',        callback_data: 'buscar_ativos' }\n]);\n\nreturn [{ json: {\n  chatId,\n  text,\n  replyMarkup: JSON.stringify({ inline_keyboard: keyboard })\n} }];"
+      },
+      "id": "n12",
+      "name": "Format Sector",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 660]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "={{ $json.replyMarkup }}"
+        }
+      },
+      "id": "n13",
+      "name": "Send Sector List",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1340, 660],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch gainers + losers in parallel and build a daily summary.\n// Requires n8n >= 0.214 (uses $helpers.httpRequest).\nconst API = 'YOUR_API_URL';\nconst chatId = $json.chatId;\n\nconst [g, l] = await Promise.all([\n  $helpers.httpRequest({ method: 'GET', url: `${API}/api/market/movers?type=gainers&limit=5` }),\n  $helpers.httpRequest({ method: 'GET', url: `${API}/api/market/movers?type=losers&limit=5`  })\n]);\n\nconst gainers = g.results || [];\nconst losers  = l.results || [];\nconst date    = g.date || new Date().toISOString().slice(0, 10);\n\nlet text = `<b>\ud83d\udccb RESUMO DO DIA \u2014 ${date}</b>\\n\\n`;\n\ntext += '<b>\ud83d\udcc8 Maiores Altas:</b>\\n';\ngainers.forEach((s, i) => {\n  text += `${i + 1}. <b>${s.ticker}</b>  +${s.change_pct}%  $${s.price}\\n`;\n});\n\ntext += '\\n<b>\ud83d\udcc9 Maiores Baixas:</b>\\n';\nlosers.forEach((s, i) => {\n  text += `${i + 1}. <b>${s.ticker}</b>  ${s.change_pct}%  $${s.price}\\n`;\n});\n\nconst replyMarkup = JSON.stringify({\n  inline_keyboard: [[\n    { text: '\ud83d\udcca Analisar Ativo', callback_data: 'buscar_ticker' },\n    { text: '\ud83d\udd19 Menu',         callback_data: 'menu'          }\n  ]]\n});\n\nreturn [{ json: { chatId, text, replyMarkup } }];"
+      },
+      "id": "n14",
+      "name": "Get Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 780]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "={{ $json.replyMarkup }}"
+        }
+      },
+      "id": "n15",
+      "name": "Send Summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 780],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ 'YOUR_API_URL/api/telegram/analyze/' + $json.data.ticker }}",
+        "options": {}
+      },
+      "id": "n16",
+      "name": "Analyze Ticker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 900]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $node[\"Parse Input\"].json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "reply_markup": "{\"inline_keyboard\":[[{\"text\":\"\ud83d\udcca Analisar outro ativo\",\"callback_data\":\"buscar_ticker\"},{\"text\":\"\ud83d\udd19 Menu\",\"callback_data\":\"menu\"}]]}"
+        }
+      },
+      "id": "n17",
+      "name": "Send Analysis",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 900],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_CREDENTIAL_ID",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{"node": "Parse Input", "type": "main", "index": 0}]]
+    },
+    "Parse Input": {
+      "main": [[{"node": "Switch Action", "type": "main", "index": 0}]]
+    },
+    "Switch Action": {
+      "main": [
+        [{"node": "Send Main Menu",   "type": "main", "index": 0}],
+        [{"node": "Ask Ticker",       "type": "main", "index": 0}],
+        [{"node": "Send Buscar Menu", "type": "main", "index": 0}],
+        [{"node": "Send Sector Menu", "type": "main", "index": 0}],
+        [{"node": "Get Movers",       "type": "main", "index": 0}],
+        [{"node": "Get Sector Stocks","type": "main", "index": 0}],
+        [{"node": "Get Summary",      "type": "main", "index": 0}],
+        [{"node": "Analyze Ticker",   "type": "main", "index": 0}]
+      ]
+    },
+    "Get Movers": {
+      "main": [[{"node": "Format Movers", "type": "main", "index": 0}]]
+    },
+    "Format Movers": {
+      "main": [[{"node": "Send Movers List", "type": "main", "index": 0}]]
+    },
+    "Get Sector Stocks": {
+      "main": [[{"node": "Format Sector", "type": "main", "index": 0}]]
+    },
+    "Format Sector": {
+      "main": [[{"node": "Send Sector List", "type": "main", "index": 0}]]
+    },
+    "Get Summary": {
+      "main": [[{"node": "Send Summary", "type": "main", "index": 0}]]
+    },
+    "Analyze Ticker": {
+      "main": [[{"node": "Send Analysis", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "radar-ativos-telegram-bot",
+  "tags": []
+}
