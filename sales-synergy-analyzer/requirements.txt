@@ -8,4 +8,4 @@ python-dotenv
 beautifulsoup4
 lxml
 pydantic
-anthropid
+anthropic
