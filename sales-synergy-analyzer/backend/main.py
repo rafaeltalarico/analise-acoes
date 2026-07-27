@@ -7,12 +7,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from services.yahoo_service import get_stock_data
-from services.peers_service import get_peers_data
-from services.sec_service import get_earnings_release
-from services.claude_service import run_claude_analysis
+from services.snowflake_service import get_snowflake_analysis, get_peers
 
-app = FastAPI(title="Stock Analysis API", version="1.0.0")
+app = FastAPI(title="Stock Analysis API - Snowflake", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,7 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-STEP_TIMEOUT = 15
+STEP_TIMEOUT = 30
 
 
 @app.get("/health")
@@ -41,92 +38,124 @@ async def analyze(ticker: str):
     if not ticker or len(ticker) > 10:
         raise HTTPException(status_code=400, detail="Ticker inválido.")
 
-    # Step 1: Yahoo Finance data
+    print(f"\n{'='*60}")
+    print(f"Iniciando análise para {ticker}")
+    print(f"{'='*60}")
+
+    # Busca peers
     try:
-        yahoo_data = await asyncio.wait_for(get_stock_data(ticker), timeout=STEP_TIMEOUT)
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Timeout ao buscar dados do Yahoo Finance.")
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        peers = await asyncio.wait_for(get_peers(ticker), timeout=STEP_TIMEOUT)
+        print(f"Encontrados {len(peers)} peers")
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Erro ao buscar dados: {str(e)}")
+        peers = []
+        print(f"Erro ao buscar peers: {e}")
 
-    sector = yahoo_data.get("sector")
-    metrics = yahoo_data.get("metrics", {})
-
-    # Steps 2 + 3 in parallel: peers and SEC
+    # Executa análise Snowflake
     try:
-        peers_result, sec_result = await asyncio.wait_for(
-            asyncio.gather(
-                get_peers_data(ticker, sector),
-                get_earnings_release(ticker),
-                return_exceptions=True,
-            ),
+        snowflake_result = await asyncio.wait_for(
+            get_snowflake_analysis(ticker, peers),
             timeout=STEP_TIMEOUT,
         )
-    except asyncio.TimeoutError:
-        peers_result = []
-        sec_result = {"sec_available": False}
+        print("Análise Snowflake concluída")
+    except Exception as e:
+        print(f"Erro na análise: {e}")
+        raise HTTPException(status_code=502, detail=f"Erro na análise: {str(e)}")
 
-    if isinstance(peers_result, Exception):
-        peers_result = []
-    if isinstance(sec_result, Exception):
-        sec_result = {"sec_available": False}
+    # Busca dados básicos via yfinance
+    company_name = ticker
+    sector = "N/A"
+    industry = "N/A"
+    price_data = {"current": None, "currency": "USD"}
+    analysts = {}
+    history = []
 
-    # Step 4: Claude — scores + earnings summary in parallel
-    sec_text = sec_result.get("text") if sec_result.get("sec_available") else None
     try:
-        claude_result = await asyncio.wait_for(
-            run_claude_analysis(metrics, sector, sec_text),
-            timeout=STEP_TIMEOUT,
+        import yfinance as yf
+        stock = yf.Ticker(ticker)
+        info = stock.info
+
+        company_name = info.get("longName") or info.get("shortName", ticker)
+        sector = info.get("sector", "N/A")
+        industry = info.get("industry", "N/A")
+        price = info.get("currentPrice") or info.get("regularMarketPrice")
+
+        def _f(v):
+            try:
+                return round(float(v), 2) if v is not None else None
+            except Exception:
+                return None
+
+        def _fmt_large(v):
+            try:
+                n = float(v)
+                if n >= 1_000_000_000_000: return f"{n/1e12:.2f}T"
+                if n >= 1_000_000_000:     return f"{n/1e9:.2f}B"
+                if n >= 1_000_000:         return f"{n/1e6:.2f}M"
+                return f"{n:,.0f}"
+            except Exception:
+                return None
+
+        change_amount = _f(info.get("regularMarketChange"))
+        prev_close_val = _f(info.get("previousClose"))
+        change_pct_val = (
+            round(change_amount / prev_close_val * 100, 2)
+            if change_amount is not None and prev_close_val
+            else None
         )
-    except (asyncio.TimeoutError, Exception):
-        claude_result = {"scores": None, "earnings": None}
-
-    # Build sources list
-    sources = ["Yahoo Finance"]
-    if sec_result.get("sec_available"):
-        sources.append("SEC EDGAR")
-    if claude_result.get("scores") or claude_result.get("earnings"):
-        sources.append("Claude API")
-
-    # Earnings summary
-    earnings_summary = {"available": False}
-    if sec_result.get("sec_available") and claude_result.get("earnings"):
-        ea = claude_result["earnings"]
-        earnings_summary = {
-            "available": True,
-            "filing_date": sec_result.get("filing_date"),
-            "period": None,
-            "sentiment": ea.get("sentiment"),
-            "text": ea.get("text"),
-            "highlights": ea.get("highlights", []),
-            "outlook": ea.get("outlook"),
+        price_data = {
+            "current":     _f(price),
+            "change":      change_amount,
+            "change_pct":  change_pct_val,
+            "prev_close":  _f(info.get("open")),
+            "day_high":    _f(info.get("dayHigh")),
+            "day_low":     _f(info.get("dayLow")),
+            "week52_high": _f(info.get("fiftyTwoWeekHigh")),
+            "week52_low":  _f(info.get("fiftyTwoWeekLow")),
+            "market_cap":  _fmt_large(info.get("marketCap")),
+            "avg_volume":  _fmt_large(info.get("averageVolume")),
+            "beta":        _f(info.get("beta")),
+            "currency":    info.get("currency", "USD"),
         }
-    elif sec_result.get("sec_available"):
-        earnings_summary = {
-            "available": True,
-            "filing_date": sec_result.get("filing_date"),
-            "period": None,
-            "sentiment": None,
-            "text": "Documento encontrado mas resumo IA indisponível.",
-            "highlights": [],
-            "outlook": None,
+
+        price_target = {
+            "current": _f(price),
+            "mean":    _f(info.get("targetMeanPrice")),
+            "low":     _f(info.get("targetLowPrice")),
+            "high":    _f(info.get("targetHighPrice")),
         }
+
+        analysts = {
+            "price_target":       price_target,
+            "recommendation":     info.get("recommendationKey", "N/A"),
+            "number_of_analysts": info.get("numberOfAnalystOpinions"),
+        }
+
+        try:
+            hist_df = stock.history(period="1y")
+            if not hist_df.empty:
+                for dt, row in hist_df.iterrows():
+                    history.append({
+                        "date": dt.strftime("%Y-%m-%d"),
+                        "close": round(float(row["Close"]), 2),
+                        "volume": int(row["Volume"]),
+                    })
+        except Exception as e:
+            print(f"Erro ao buscar histórico: {e}")
+
+    except Exception as e:
+        print(f"Erro ao buscar dados básicos: {e}")
 
     return {
-        "ticker": yahoo_data["ticker"],
-        "company_name": yahoo_data.get("company_name"),
-        "sector": yahoo_data.get("sector"),
-        "industry": yahoo_data.get("industry"),
-        "price": yahoo_data.get("price", {}),
-        "scores": claude_result.get("scores"),
-        "metrics": metrics,
-        "metrics_summary": claude_result.get("metrics_summary"),
-        "analysts": yahoo_data.get("analysts", {}),
-        "earnings_summary": earnings_summary,
-        "peers": peers_result if isinstance(peers_result, list) else [],
-        "sources": sources,
+        "ticker": ticker,
+        "company_name": company_name,
+        "sector": sector,
+        "industry": industry,
+        "price": price_data,
+        "analysts": analysts,
+        "snowflake": snowflake_result,
+        "history": history,
+        "peers": peers,
+        "sources": ["Yahoo Finance"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
