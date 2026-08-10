@@ -57,19 +57,25 @@ SECTOR_NAMES = [
 SECTOR_NORMALIZE = {
     "technology": "Technology",
     "tech": "Technology",
+    "information technology": "Technology",
     "healthcare": "Healthcare",
+    "health care": "Healthcare",
     "financial": "Financial Services",
+    "financials": "Financial Services",
     "financial services": "Financial Services",
     "consumer cyclical": "Consumer Cyclical",
+    "consumer discretionary": "Consumer Cyclical",
     "communication": "Communication Services",
     "communication services": "Communication Services",
     "energy": "Energy",
     "industrials": "Industrials",
     "industrial": "Industrials",
     "consumer defensive": "Consumer Defensive",
+    "consumer staples": "Consumer Defensive",
     "utilities": "Utilities",
     "real estate": "Real Estate",
     "basic materials": "Basic Materials",
+    "materials": "Basic Materials",
 }
 
 
@@ -444,55 +450,43 @@ async def market_sectors_list():
 
 
 @app.get("/api/market/sector/{sector_name}")
-async def market_sector_stocks(sector_name: str, limit: int = 5):
-    """Top stocks in a sector with their day price change."""
+async def market_sector_stocks(sector_name: str, limit: int = 10):
+    """Top stocks in a sector sorted by market cap (descending)."""
     normalized = SECTOR_NORMALIZE.get(sector_name.lower(), sector_name)
     tickers = get_fallback_peers(normalized)
     if not tickers:
         raise HTTPException(status_code=404, detail=f"Setor '{sector_name}' não encontrado.")
 
     limit = max(1, min(10, limit))
-    tickers = tickers[: limit + 3]
 
-    try:
-        data = await asyncio.to_thread(
-            lambda: yf.download(
-                tickers,
-                period="2d",
-                interval="1d",
-                progress=False,
-                auto_adjust=True,
+    async def _fetch(sym: str):
+        def _get():
+            fi = yf.Ticker(sym).fast_info
+            return (
+                getattr(fi, "market_cap", None),
+                getattr(fi, "last_price", None),
+                getattr(fi, "previous_close", None),
             )
-        )
+        try:
+            cap, price, prev = await asyncio.to_thread(_get)
+            chg = round((price - prev) / prev * 100, 2) if price and prev and prev > 0 else None
+            return {
+                "ticker":         sym,
+                "price":          round(float(price), 2) if price else None,
+                "change_pct":     chg,
+                "market_cap":     float(cap) if cap else 0,
+                "market_cap_fmt": _fmt_large(cap),
+            }
+        except Exception:
+            return None
 
-        close = _get_close_df(data)
+    raw = await asyncio.gather(*[_fetch(sym) for sym in tickers])
+    valid = [r for r in raw if r and r.get("market_cap", 0) > 0]
+    top = sorted(valid, key=lambda x: x["market_cap"], reverse=True)[:limit]
+    for s in top:
+        s.pop("market_cap", None)
 
-        results = []
-        for sym in tickers:
-            if len(results) >= limit:
-                break
-            try:
-                curr = float(close[sym].iloc[-1]) if sym in close.columns and len(close) >= 1 else None
-                prev = float(close[sym].iloc[-2]) if sym in close.columns and len(close) >= 2 else None
-                chg_pct = (
-                    round((curr - prev) / prev * 100, 2)
-                    if curr and prev and prev > 0
-                    else None
-                )
-                results.append({
-                    "ticker":     sym,
-                    "price":      round(curr, 2) if curr else None,
-                    "change_pct": chg_pct,
-                })
-            except Exception:
-                continue
-
-        return {"sector": normalized, "results": results}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Erro ao buscar setor: {str(e)}")
+    return {"sector": normalized, "results": top}
 
 
 if __name__ == "__main__":

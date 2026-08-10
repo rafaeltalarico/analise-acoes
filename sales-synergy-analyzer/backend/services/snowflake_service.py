@@ -774,21 +774,58 @@ async def get_peers(ticker: str) -> List[Dict[str, Any]]:
 
 
 def get_fallback_peers(sector: str) -> List[str]:
+    # 15 candidates per sector so the endpoint can rank by market cap and return top 10
     sector_peers = {
-        "Technology": ["AAPL", "MSFT", "GOOGL", "META", "NVDA", "AMD", "INTC", "IBM", "ORCL", "CSCO"],
-        "Healthcare": ["JNJ", "PFE", "MRK", "ABBV", "AMGN", "GILD", "BMY", "UNH", "CVS", "ABT"],
-        "Financial Services": ["JPM", "BAC", "WFC", "C", "GS", "MS", "V", "MA", "AXP", "BLK"],
-        "Financial": ["JPM", "BAC", "WFC", "C", "GS", "MS", "V", "MA", "AXP", "BLK"],
-        "Consumer Cyclical": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "TGT", "LOW", "COST", "TJX"],
-        "Communication Services": ["META", "NFLX", "DIS", "SNAP", "PINS", "RDDT", "CMCSA", "WBD", "CHTR", "TMUS"],
-        "Communication": ["META", "NFLX", "DIS", "SNAP", "PINS", "RDDT", "CMCSA", "WBD", "CHTR", "TMUS"],
-        "Energy": ["XOM", "CVX", "COP", "SLB", "EOG", "PXD", "OXY", "MPC", "PSX", "VLO"],
-        "Industrials": ["GE", "BA", "CAT", "DE", "HON", "LMT", "UNP", "UPS", "FDX", "MMM"],
-        "Industrial": ["GE", "BA", "CAT", "DE", "HON", "LMT", "UNP", "UPS", "FDX", "MMM"],
-        "Consumer Defensive": ["PG", "KO", "PEP", "WMT", "CL", "GIS", "MDLZ", "SYY", "KHC", "COST"],
-        "Utilities": ["NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "ED", "XEL", "PCG"],
-        "Real Estate": ["AMT", "PLD", "CCI", "EQIX", "PSA", "WELL", "SPG", "AVB", "EQR", "VTR"],
-        "Basic Materials": ["LIN", "APD", "DOW", "DD", "FCX", "NEM", "BHP", "RIO", "VALE", "SHW"],
-        "Consumer Staples": ["PG", "KO", "PEP", "WMT", "CL", "GIS", "MDLZ", "SYY", "KHC", "COST"],
+        "Technology": [
+            "AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "AMD", "ADBE", "CRM", "QCOM", "TXN",
+            "INTC", "NOW", "IBM", "AMAT", "MU",
+        ],
+        "Healthcare": [
+            "LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "ABT", "AMGN", "PFE", "DHR",
+            "ISRG", "BMY", "GILD", "CVS", "MDT",
+        ],
+        "Financial Services": [
+            "BRK-B", "JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "SPGI", "AXP",
+            "BLK", "C", "CB", "CME", "PGR",
+        ],
+        "Consumer Cyclical": [
+            "AMZN", "TSLA", "HD", "MCD", "BKNG", "NKE", "TJX", "LOW", "SBUX", "CMG",
+            "ABNB", "MAR", "GM", "TGT", "F",
+        ],
+        "Consumer Defensive": [
+            "WMT", "PG", "KO", "COST", "PEP", "PM", "MO", "MDLZ", "CL", "KHC",
+            "GIS", "SYY", "STZ", "KMB", "CHD",
+        ],
+        "Communication Services": [
+            "GOOGL", "META", "NFLX", "DIS", "CMCSA", "TMUS", "VZ", "T", "CHTR", "EA",
+            "WBD", "SNAP", "MTCH", "IPG", "OMC",
+        ],
+        "Industrials": [
+            "GE", "RTX", "CAT", "HON", "UNP", "UPS", "BA", "DE", "LMT", "ETN",
+            "WM", "ITW", "EMR", "PH", "TT",
+        ],
+        "Energy": [
+            "XOM", "CVX", "COP", "EOG", "SLB", "PSX", "MPC", "OXY", "VLO", "WMB",
+            "KMI", "HAL", "BKR", "DVN", "FANG",
+        ],
+        "Basic Materials": [
+            "LIN", "SHW", "APD", "ECL", "FCX", "NEM", "DOW", "DD", "NUE", "ALB",
+            "CF", "MOS", "WLK", "EMN", "CTVA",
+        ],
+        "Real Estate": [
+            "PLD", "AMT", "EQIX", "WELL", "CCI", "PSA", "SPG", "O", "DLR", "AVB",
+            "VICI", "IRM", "EQR", "ARE", "EXR",
+        ],
+        "Utilities": [
+            "NEE", "SO", "DUK", "D", "SRE", "AEP", "EXC", "XEL", "ED", "WEC",
+            "ES", "ETR", "FE", "EIX", "PPL",
+        ],
     }
+    # Aliases for backward-compat
+    sector_peers["Financial"] = sector_peers["Financial Services"]
+    sector_peers["Industrial"] = sector_peers["Industrials"]
+    sector_peers["Communication"] = sector_peers["Communication Services"]
+    sector_peers["Consumer Staples"] = sector_peers["Consumer Defensive"]
+    sector_peers["Materials"] = sector_peers["Basic Materials"]
+
     return sector_peers.get(sector, sector_peers.get("Technology", ["AAPL", "MSFT", "GOOGL"]))

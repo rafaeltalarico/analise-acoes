@@ -477,15 +477,15 @@
               "row": {
                 "buttons": [
                   {
-                    "text": "📡 Communication",
+                    "text": "🧴 Consumer Defensive",
                     "additionalFields": {
-                      "callback_data": "setor_Communication Services"
+                      "callback_data": "setor_Consumer Defensive"
                     }
                   },
                   {
-                    "text": "⛽ Energy",
+                    "text": "📡 Communication",
                     "additionalFields": {
-                      "callback_data": "setor_Energy"
+                      "callback_data": "setor_Communication Services"
                     }
                   }
                 ]
@@ -501,9 +501,9 @@
                     }
                   },
                   {
-                    "text": "🛒 Consumer Defensive",
+                    "text": "⛽ Energy",
                     "additionalFields": {
-                      "callback_data": "setor_Consumer Defensive"
+                      "callback_data": "setor_Energy"
                     }
                   }
                 ]
@@ -512,17 +512,17 @@
             {
               "row": {
                 "buttons": [
+                  {
+                    "text": "⛏️ Basic Materials",
+                    "additionalFields": {
+                      "callback_data": "setor_Basic Materials"
+                    }
+                  },
                   {
                     "text": "💡 Utilities",
                     "additionalFields": {
                       "callback_data": "setor_Utilities"
                     }
-                  },
-                  {
-                    "text": "🏠 Real Estate",
-                    "additionalFields": {
-                      "callback_data": "setor_Real Estate"
-                    }
                   }
                 ]
               }
@@ -530,6 +530,12 @@
             {
               "row": {
                 "buttons": [
+                  {
+                    "text": "🏠 Real Estate",
+                    "additionalFields": {
+                      "callback_data": "setor_Real Estate"
+                    }
+                  },
                   {
                     "text": "🔙 Voltar",
                     "additionalFields": {
@@ -608,7 +614,7 @@
     },
     {
       "parameters": {
-        "url": "={{ 'http://127.0.0.1:8000/api/market/sector/' + encodeURIComponent($('Parse Input').item.json.data.sector) + '?limit=7' }}",
+        "url": "={{ 'http://127.0.0.1:8000/api/market/sector/' + encodeURIComponent($('Parse Input').item.json.data.sector) + '?limit=10' }}",
         "options": {}
       },
       "id": "85d4ca67-5a05-4c08-ac2d-41acdd468e63",
@@ -622,7 +628,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const res = $input.first().json;\nconst chatId = $('Parse Input').item.json.chatId;\nconst sector = res.sector || 'Setor';\nconst results = res.results || [];\n\nlet text = `<b>🏣 ${sector}</b>\\n\\n`;\nresults.forEach((s, i) => {\n  const chg = s.change_pct != null ? ` ${s.change_pct >= 0 ? '📈 +' : '📉 '}${s.change_pct}%` : '';\n  text += `${i + 1}. <b>${s.ticker}</b>  $${s.price}${chg}\\n`;\n});\ntext += '\\n<i>Toque em um ativo para análise completa:</i>';\n\nconst keyboard = results.map(s => ([{ text: `${s.ticker}  $${s.price}${s.change_pct != null ? (s.change_pct >= 0 ? ' 📈' : ' 📉') : ''}`, callback_data: `analyze_${s.ticker}` }]));\nkeyboard.push([{ text: '🏣 Outros Setores', callback_data: 'setores' }, { text: '🔙 Voltar', callback_data: 'buscar_ativos' }]);\n\nreturn [{ json: { chatId, text, replyMarkup: JSON.stringify({ inline_keyboard: keyboard }) } }];"
+        "jsCode": "const res = $input.first().json;\nconst chatId = $('Parse Input').item.json.chatId;\nconst sector = res.sector || 'Setor';\nconst results = res.results || [];\n\nlet text = `<b>🏣 ${sector}</b>\\n<i>Top ${results.length} por Market Cap</i>\\n\\n`;\nresults.forEach((s, i) => {\n  const chg = s.change_pct != null ? ` ${s.change_pct >= 0 ? '📈 +' : '📉 '}${s.change_pct}%` : '';\n  const cap = s.market_cap_fmt ? ` · ${s.market_cap_fmt}` : '';\n  text += `${i + 1}. <b>${s.ticker}</b>  $${s.price}${chg}${cap}\\n`;\n});\ntext += '\\n<i>Toque em um ativo para análise completa:</i>';\n\nconst keyboard = results.map(s => ([{ text: `${s.ticker}  $${s.price}${s.change_pct != null ? (s.change_pct >= 0 ? ' 📈' : ' 📉') : ''}`, callback_data: `analyze_${s.ticker}` }]));\nkeyboard.push([{ text: '🏣 Outros Setores', callback_data: 'setores' }, { text: '🔙 Voltar', callback_data: 'buscar_ativos' }]);\n\nreturn [{ json: { chatId, text, replyMarkup: JSON.stringify({ inline_keyboard: keyboard }) } }];"
       },
       "id": "82c89238-35b5-4d6f-a802-d01a4bf243a7",
       "name": "Format Sector",
