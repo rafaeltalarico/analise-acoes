@@ -164,6 +164,78 @@ def _score_bar(score: int, max_score: int, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+def _fetch_earnings_history(stock: yf.Ticker) -> list:
+    """Returns up to 6 past quarters of EPS actual vs estimate (adjusted/non-GAAP)."""
+    try:
+        df = stock.earnings_dates
+        if df is None or df.empty:
+            return []
+
+        past = df[df["Reported EPS"].notna()].sort_index(ascending=False).head(6)
+        if past.empty:
+            return []
+
+        results = []
+        for dt, row in past.iterrows():
+            ts = pd.Timestamp(dt)
+            date_label = ts.strftime("%b %Y")
+
+            est = row.get("EPS Estimate")
+            act = row.get("Reported EPS")
+            surp = row.get("Surprise(%)")
+
+            est_f = None if (est is None or pd.isna(est)) else round(float(est), 2)
+            act_f = None if (act is None or pd.isna(act)) else round(float(act), 2)
+            surp_f = None if (surp is None or pd.isna(surp)) else round(float(surp), 2)
+
+            beat = None
+            if act_f is not None and est_f is not None:
+                beat = True if act_f > est_f else (False if act_f < est_f else None)
+
+            results.append({
+                "date": date_label,
+                "estimate": est_f,
+                "actual": act_f,
+                "surprise_pct": surp_f,
+                "beat": beat,
+            })
+
+        return results
+    except Exception as e:
+        print(f"Erro ao buscar earnings history: {e}")
+        return []
+
+
+def _format_earnings_section(earnings: list) -> str:
+    if not earnings:
+        return ""
+
+    lines = ["", "<b>📊 HISTÓRICO EPS (Ajustado)</b>"]
+    for e in earnings:
+        act = e.get("actual")
+        if act is None:
+            continue
+        date  = e.get("date", "")
+        est   = e.get("estimate")
+        surp  = e.get("surprise_pct")
+        beat  = e.get("beat")
+
+        icon       = "✅" if beat is True else ("❌" if beat is False else "➖")
+        beat_label = "Beat    " if beat is True else ("Miss    " if beat is False else "Em linha")
+
+        est_str  = f" est: ${est:.2f}" if est is not None else ""
+        surp_str = ""
+        if surp is not None:
+            sign = "+" if surp >= 0 else ""
+            surp_str = f"  {sign}{surp:.1f}%"
+
+        lines.append(
+            f"<code>{date:<8} {icon} {beat_label} ${act:.2f}{est_str}{surp_str}</code>"
+        )
+
+    return "\n".join(lines)
+
+
 def format_telegram_analysis(
     ticker: str,
     company_name: str,
@@ -171,6 +243,7 @@ def format_telegram_analysis(
     price_data: dict,
     snowflake: dict,
     analysts: dict,
+    earnings: list = None,
 ) -> str:
     price = price_data.get("current")
     change = price_data.get("change")
@@ -249,6 +322,12 @@ def format_telegram_analysis(
             rec_label = rec_map.get(recommendation, recommendation.replace("_", " ").title())
             n_str = f" ({n_analysts} analistas)" if n_analysts else ""
             lines.append(f"📌 Recomendação: {rec_label}{n_str}")
+
+    # Earnings history section
+    if earnings:
+        section = _format_earnings_section(earnings)
+        if section:
+            lines.append(section)
 
     return "\n".join(lines)
 
@@ -354,9 +433,10 @@ async def telegram_analyze(ticker: str):
     sector = "N/A"
     price_data: dict = {}
     analysts: dict = {}
+    earnings_history: list = []
 
+    stock = yf.Ticker(ticker)
     try:
-        stock = yf.Ticker(ticker)
         info = stock.info
         company_name = info.get("longName") or info.get("shortName", ticker)
         sector = info.get("sector", "N/A")
@@ -377,8 +457,13 @@ async def telegram_analyze(ticker: str):
     except Exception as e:
         print(f"Erro ao buscar dados básicos: {e}")
 
+    try:
+        earnings_history = _fetch_earnings_history(stock)
+    except Exception as e:
+        print(f"Erro ao buscar earnings history: {e}")
+
     text = format_telegram_analysis(
-        ticker, company_name, sector, price_data, snowflake_result, analysts
+        ticker, company_name, sector, price_data, snowflake_result, analysts, earnings_history
     )
 
     return {"ticker": ticker, "text": text, "parse_mode": "HTML"}
