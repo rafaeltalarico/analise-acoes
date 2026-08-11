@@ -165,7 +165,7 @@ def _score_bar(score: int, max_score: int, width: int = 10) -> str:
 
 
 def _fetch_earnings_history(stock: yf.Ticker) -> list:
-    """Returns up to 6 past quarters of EPS actual vs estimate (adjusted/non-GAAP)."""
+    """Returns up to 6 past quarters of LPA (EPS) and Revenue actual vs estimate."""
     try:
         df = stock.earnings_dates
         if df is None or df.empty:
@@ -175,30 +175,56 @@ def _fetch_earnings_history(stock: yf.Ticker) -> list:
         if past.empty:
             return []
 
+        has_rev = "Reported Revenue" in df.columns and "Revenue Estimate" in df.columns
+
         results = []
         for dt, row in past.iterrows():
             ts = pd.Timestamp(dt)
             date_label = ts.strftime("%b %Y")
 
-            est = row.get("EPS Estimate")
-            act = row.get("Reported EPS")
-            surp = row.get("Surprise(%)")
+            lpa_est = row.get("EPS Estimate")
+            lpa_act = row.get("Reported EPS")
+            lpa_surp = row.get("Surprise(%)")
 
-            est_f = None if (est is None or pd.isna(est)) else round(float(est), 2)
-            act_f = None if (act is None or pd.isna(act)) else round(float(act), 2)
-            surp_f = None if (surp is None or pd.isna(surp)) else round(float(surp), 2)
+            lpa_est_f = None if (lpa_est is None or pd.isna(lpa_est)) else round(float(lpa_est), 2)
+            lpa_act_f = None if (lpa_act is None or pd.isna(lpa_act)) else round(float(lpa_act), 2)
+            lpa_surp_f = None if (lpa_surp is None or pd.isna(lpa_surp)) else round(float(lpa_surp), 2)
 
-            beat = None
-            if act_f is not None and est_f is not None:
-                beat = True if act_f > est_f else (False if act_f < est_f else None)
+            lpa_beat = None
+            if lpa_act_f is not None and lpa_est_f is not None:
+                lpa_beat = True if lpa_act_f > lpa_est_f else (False if lpa_act_f < lpa_est_f else None)
 
-            results.append({
+            entry = {
                 "date": date_label,
-                "estimate": est_f,
-                "actual": act_f,
-                "surprise_pct": surp_f,
-                "beat": beat,
-            })
+                "lpa_estimate": lpa_est_f,
+                "lpa_actual": lpa_act_f,
+                "lpa_surprise_pct": lpa_surp_f,
+                "lpa_beat": lpa_beat,
+                "rev_estimate": None,
+                "rev_actual": None,
+                "rev_surprise_pct": None,
+                "rev_beat": None,
+            }
+
+            if has_rev:
+                rev_est = row.get("Revenue Estimate")
+                rev_act = row.get("Reported Revenue")
+                rev_surp = row.get("Revenue Surprise(%)")
+
+                rev_est_f = None if (rev_est is None or pd.isna(rev_est)) else float(rev_est)
+                rev_act_f = None if (rev_act is None or pd.isna(rev_act)) else float(rev_act)
+                rev_surp_f = None if (rev_surp is None or pd.isna(rev_surp)) else round(float(rev_surp), 2)
+
+                rev_beat = None
+                if rev_act_f is not None and rev_est_f is not None:
+                    rev_beat = True if rev_act_f > rev_est_f else (False if rev_act_f < rev_est_f else None)
+
+                entry["rev_estimate"] = rev_est_f
+                entry["rev_actual"] = rev_act_f
+                entry["rev_surprise_pct"] = rev_surp_f
+                entry["rev_beat"] = rev_beat
+
+            results.append(entry)
 
         return results
     except Exception as e:
@@ -206,32 +232,66 @@ def _fetch_earnings_history(stock: yf.Ticker) -> list:
         return []
 
 
+def _fmt_rev(value) -> str:
+    """Format revenue value as B/M string."""
+    if value is None:
+        return "—"
+    abs_v = abs(value)
+    if abs_v >= 1e12:
+        return f"${value/1e12:.2f}T"
+    if abs_v >= 1e9:
+        return f"${value/1e9:.2f}B"
+    if abs_v >= 1e6:
+        return f"${value/1e6:.2f}M"
+    return f"${value:.0f}"
+
+
 def _format_earnings_section(earnings: list) -> str:
     if not earnings:
         return ""
 
-    lines = ["", "<b>📊 HISTÓRICO EPS (Ajustado)</b>"]
+    has_rev = any(e.get("rev_actual") is not None for e in earnings)
+
+    lines = ["", "<b>📊 RESULTADOS TRIMESTRAIS</b>"]
+
     for e in earnings:
-        act = e.get("actual")
-        if act is None:
+        lpa_act = e.get("lpa_actual")
+        if lpa_act is None:
             continue
-        date  = e.get("date", "")
-        est   = e.get("estimate")
-        surp  = e.get("surprise_pct")
-        beat  = e.get("beat")
 
-        icon       = "✅" if beat is True else ("❌" if beat is False else "➖")
-        beat_label = "Beat    " if beat is True else ("Miss    " if beat is False else "Em linha")
+        date     = e.get("date", "")
+        lpa_est  = e.get("lpa_estimate")
+        lpa_surp = e.get("lpa_surprise_pct")
+        lpa_beat = e.get("lpa_beat")
 
-        est_str  = f" est: ${est:.2f}" if est is not None else ""
-        surp_str = ""
-        if surp is not None:
-            sign = "+" if surp >= 0 else ""
-            surp_str = f"  {sign}{surp:.1f}%"
+        lpa_icon  = "✅" if lpa_beat is True else ("❌" if lpa_beat is False else "➖")
+        lpa_label = "Beat" if lpa_beat is True else ("Miss" if lpa_beat is False else "  —  ")
 
-        lines.append(
-            f"<code>{date:<8} {icon} {beat_label} ${act:.2f}{est_str}{surp_str}</code>"
-        )
+        lpa_est_str  = f" est:${lpa_est:.2f}" if lpa_est is not None else ""
+        lpa_surp_str = ""
+        if lpa_surp is not None:
+            sign = "+" if lpa_surp >= 0 else ""
+            lpa_surp_str = f" {sign}{lpa_surp:.1f}%"
+
+        lines.append(f"<code>{date:<8}  LPA {lpa_icon} {lpa_label}  ${lpa_act:.2f}{lpa_est_str}{lpa_surp_str}</code>")
+
+        if has_rev:
+            rev_act  = e.get("rev_actual")
+            rev_est  = e.get("rev_estimate")
+            rev_surp = e.get("rev_surprise_pct")
+            rev_beat = e.get("rev_beat")
+
+            rev_icon  = "✅" if rev_beat is True else ("❌" if rev_beat is False else "➖")
+            rev_label = "Beat" if rev_beat is True else ("Miss" if rev_beat is False else "  —  ")
+
+            rev_act_str = _fmt_rev(rev_act) if rev_act is not None else "—"
+            rev_est_str = f" est:{_fmt_rev(rev_est)}" if rev_est is not None else ""
+            rev_surp_str = ""
+            if rev_surp is not None:
+                sign = "+" if rev_surp >= 0 else ""
+                rev_surp_str = f" {sign}{rev_surp:.1f}%"
+
+            lines.append(f"<code>         REC {rev_icon} {rev_label}  {rev_act_str}{rev_est_str}{rev_surp_str}</code>")
 
     return "\n".join(lines)
 
