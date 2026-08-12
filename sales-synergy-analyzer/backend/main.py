@@ -158,9 +158,18 @@ def _fetch_analysts(price: Optional[float], info: dict, stock=None) -> dict:
                 strong_sell = int(row.get("strongSell", 0) or 0)
                 total = strong_buy + buy + hold + sell + strong_sell
                 if total > 0:
+                    rec_key = result["recommendation"]
+                    if rec_key in ("strong_buy", "buy"):
+                        count = strong_buy + buy
+                    elif rec_key == "hold":
+                        count = hold
+                    elif rec_key in ("sell", "strong_sell"):
+                        count = sell + strong_sell
+                    else:
+                        count = strong_buy + buy
                     result["rec_breakdown"] = {
-                        "favorable": strong_buy + buy,
-                        "total":     total,
+                        "count": count,
+                        "total": total,
                     }
         except Exception:
             pass
@@ -514,7 +523,7 @@ def format_telegram_analysis(
             }
             rec_label = rec_map.get(recommendation, recommendation.replace("_", " ").title())
             if rec_breakdown:
-                n_str = f" ({rec_breakdown['favorable']}/{rec_breakdown['total']} analistas)"
+                n_str = f" ({rec_breakdown['count']}/{rec_breakdown['total']} analistas)"
             elif n_analysts:
                 n_str = f" ({n_analysts} analistas)"
             else:
