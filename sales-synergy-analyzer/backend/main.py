@@ -135,17 +135,37 @@ def _fetch_price_data(info: dict) -> dict:
     }
 
 
-def _fetch_analysts(price: Optional[float], info: dict) -> dict:
-    return {
+def _fetch_analysts(price: Optional[float], info: dict, stock=None) -> dict:
+    result = {
         "price_target": {
             "current": price,
             "mean":    _f(info.get("targetMeanPrice")),
-            "low":     _f(info.get("targetLowPrice")),
-            "high":    _f(info.get("targetHighPrice")),
         },
         "recommendation":     info.get("recommendationKey", "N/A"),
         "number_of_analysts": info.get("numberOfAnalystOpinions"),
+        "rec_breakdown":      None,
     }
+
+    if stock is not None:
+        try:
+            rec_sum = stock.recommendations_summary
+            if rec_sum is not None and not rec_sum.empty:
+                row = rec_sum.iloc[0]
+                strong_buy  = int(row.get("strongBuy",  0) or 0)
+                buy         = int(row.get("buy",        0) or 0)
+                hold        = int(row.get("hold",       0) or 0)
+                sell        = int(row.get("sell",       0) or 0)
+                strong_sell = int(row.get("strongSell", 0) or 0)
+                total = strong_buy + buy + hold + sell + strong_sell
+                if total > 0:
+                    result["rec_breakdown"] = {
+                        "favorable": strong_buy + buy,
+                        "total":     total,
+                    }
+        except Exception:
+            pass
+
+    return result
 
 
 def _get_close_df(data: pd.DataFrame) -> pd.DataFrame:
@@ -472,24 +492,18 @@ def format_telegram_analysis(
     # Price Target section
     pt = analysts.get("price_target", {})
     mean = pt.get("mean")
-    low_pt = pt.get("low")
-    high_pt = pt.get("high")
     recommendation = analysts.get("recommendation", "")
     n_analysts = analysts.get("number_of_analysts")
+    rec_breakdown = analysts.get("rec_breakdown")
 
-    if mean or low_pt or high_pt:
+    if mean:
         lines += ["", "<b>🎯 PRICE TARGET (Consenso)</b>"]
-        if low_pt:
-            lines.append(f"Baixo:  ${low_pt:.2f}")
-        if mean:
-            upside_str = ""
-            if price:
-                upside_pct = (mean - price) / price * 100
-                sign = "+" if upside_pct >= 0 else ""
-                upside_str = f"  ({sign}{upside_pct:.1f}% upside)"
-            lines.append(f"Médio:  ${mean:.2f}{upside_str}")
-        if high_pt:
-            lines.append(f"Alto:   ${high_pt:.2f}")
+        upside_str = ""
+        if price:
+            upside_pct = (mean - price) / price * 100
+            sign = "+" if upside_pct >= 0 else ""
+            upside_str = f"  ({sign}{upside_pct:.1f}% upside)"
+        lines.append(f"Médio:  ${mean:.2f}{upside_str}")
         if recommendation and recommendation not in ("N/A", "none", ""):
             rec_map = {
                 "strong_buy":  "Strong Buy 🟢",
@@ -499,7 +513,12 @@ def format_telegram_analysis(
                 "strong_sell": "Strong Sell 🔴",
             }
             rec_label = rec_map.get(recommendation, recommendation.replace("_", " ").title())
-            n_str = f" ({n_analysts} analistas)" if n_analysts else ""
+            if rec_breakdown:
+                n_str = f" ({rec_breakdown['favorable']}/{rec_breakdown['total']} analistas)"
+            elif n_analysts:
+                n_str = f" ({n_analysts} analistas)"
+            else:
+                n_str = ""
             lines.append(f"📌 Recomendação: {rec_label}{n_str}")
 
     # Earnings history section
@@ -642,7 +661,7 @@ async def telegram_analyze(ticker: str):
             ),
             "market_cap": _fmt_large(info.get("marketCap")),
         }
-        analysts = _fetch_analysts(price, info)
+        analysts = _fetch_analysts(price, info, stock)
     except Exception as e:
         print(f"Erro ao buscar dados básicos: {e}")
         error_text = (
