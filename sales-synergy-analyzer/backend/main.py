@@ -617,9 +617,19 @@ async def telegram_analyze(ticker: str):
     stock = yf.Ticker(ticker)
     try:
         info = stock.info
+        price = _f(info.get("currentPrice") or info.get("regularMarketPrice"))
+
+        # Ticker inválido: sem preço E sem nome de empresa
+        if price is None and not (info.get("longName") or info.get("shortName")):
+            error_text = (
+                f"❌ <b>Ticker '{ticker}' não encontrado.</b>\n\n"
+                f"Verifique se o símbolo está correto.\n"
+                f"<i>Exemplos: AAPL, MSFT, KLAC, NVDA</i>"
+            )
+            return {"ticker": ticker, "text": error_text, "parse_mode": "HTML"}
+
         company_name = info.get("longName") or info.get("shortName", ticker)
         sector = info.get("sector", "N/A")
-        price = _f(info.get("currentPrice") or info.get("regularMarketPrice"))
         change_amount = _f(info.get("regularMarketChange"))
         prev_close_val = _f(info.get("previousClose"))
         price_data = {
@@ -635,6 +645,12 @@ async def telegram_analyze(ticker: str):
         analysts = _fetch_analysts(price, info)
     except Exception as e:
         print(f"Erro ao buscar dados básicos: {e}")
+        error_text = (
+            f"❌ <b>Não foi possível buscar dados para '{ticker}'.</b>\n\n"
+            f"Verifique se o símbolo está correto ou tente novamente.\n"
+            f"<i>Exemplos: AAPL, MSFT, KLAC, NVDA</i>"
+        )
+        return {"ticker": ticker, "text": error_text, "parse_mode": "HTML"}
 
     try:
         earnings_history = _fetch_earnings_history(stock)
