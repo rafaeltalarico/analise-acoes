@@ -290,7 +290,7 @@ def _fetch_via_alpha_vantage(stock: yf.Ticker, ticker: str, api_key: str) -> lis
                 "rev_beat": rev_beat,
             })
 
-            if len(results) == 6:
+            if len(results) == 4:
                 break
 
         return results
@@ -307,7 +307,7 @@ def _fetch_via_yfinance(stock: yf.Ticker) -> list:
         if df is None or df.empty or "Reported EPS" not in df.columns:
             return []
 
-        past = df[df["Reported EPS"].notna()].sort_index(ascending=False).head(6)
+        past = df[df["Reported EPS"].notna()].sort_index(ascending=False).head(4)
         if past.empty:
             return []
 
@@ -353,16 +353,16 @@ def _fetch_via_yfinance(stock: yf.Ticker) -> list:
 
 
 def _fmt_rev(value) -> str:
-    """Format revenue value as B/M string."""
+    """Formata receita como string curta (1 decimal): $85.8B, $1.2T, $320.5M."""
     if value is None:
         return "—"
     abs_v = abs(value)
     if abs_v >= 1e12:
-        return f"${value/1e12:.2f}T"
+        return f"${value/1e12:.1f}T"
     if abs_v >= 1e9:
-        return f"${value/1e9:.2f}B"
+        return f"${value/1e9:.1f}B"
     if abs_v >= 1e6:
-        return f"${value/1e6:.2f}M"
+        return f"${value/1e6:.1f}M"
     return f"${value:.0f}"
 
 
@@ -371,8 +371,7 @@ def _format_earnings_section(earnings: list) -> str:
         return ""
 
     has_rev = any(e.get("rev_actual") is not None for e in earnings)
-
-    lines = ["", "<b>📊 RESULTADOS TRIMESTRAIS</b>"]
+    parts = ["", "<b>📊 RESULTADOS TRIMESTRAIS</b>"]
 
     for e in earnings:
         lpa_act = e.get("lpa_actual")
@@ -383,37 +382,37 @@ def _format_earnings_section(earnings: list) -> str:
         lpa_est  = e.get("lpa_estimate")
         lpa_surp = e.get("lpa_surprise_pct")
         lpa_beat = e.get("lpa_beat")
+        lpa_icon = "✅" if lpa_beat is True else ("❌" if lpa_beat is False else "➖")
 
-        lpa_icon  = "✅" if lpa_beat is True else ("❌" if lpa_beat is False else "➖")
-        lpa_label = "Beat" if lpa_beat is True else ("Miss" if lpa_beat is False else "  —  ")
-
-        lpa_est_str  = f" est:${lpa_est:.2f}" if lpa_est is not None else ""
-        lpa_surp_str = ""
+        lpa_proj_s = f"  proj ${lpa_est:.2f}" if lpa_est is not None else ""
+        lpa_surp_s = ""
         if lpa_surp is not None:
             sign = "+" if lpa_surp >= 0 else ""
-            lpa_surp_str = f" {sign}{lpa_surp:.1f}%"
+            lpa_surp_s = f"  {sign}{lpa_surp:.1f}%"
 
-        lines.append(f"<code>{date:<8}  LPA {lpa_icon} {lpa_label}  ${lpa_act:.2f}{lpa_est_str}{lpa_surp_str}</code>")
+        block = f"LPA {lpa_icon}  ${lpa_act:.2f}{lpa_proj_s}{lpa_surp_s}"
 
         if has_rev:
             rev_act  = e.get("rev_actual")
             rev_est  = e.get("rev_estimate")
             rev_surp = e.get("rev_surprise_pct")
             rev_beat = e.get("rev_beat")
+            rev_icon = "✅" if rev_beat is True else ("❌" if rev_beat is False else "➖")
 
-            rev_icon  = "✅" if rev_beat is True else ("❌" if rev_beat is False else "➖")
-            rev_label = "Beat" if rev_beat is True else ("Miss" if rev_beat is False else "  —  ")
-
-            rev_act_str = _fmt_rev(rev_act) if rev_act is not None else "—"
-            rev_est_str = f" est:{_fmt_rev(rev_est)}" if rev_est is not None else ""
-            rev_surp_str = ""
+            rev_proj_s = f"  proj {_fmt_rev(rev_est)}" if rev_est is not None else ""
+            rev_surp_s = ""
             if rev_surp is not None:
                 sign = "+" if rev_surp >= 0 else ""
-                rev_surp_str = f" {sign}{rev_surp:.1f}%"
+                rev_surp_s = f"  {sign}{rev_surp:.1f}%"
 
-            lines.append(f"<code>         REC {rev_icon} {rev_label}  {rev_act_str}{rev_est_str}{rev_surp_str}</code>")
+            if rev_act is not None:
+                block += f"\nRec {rev_icon}  {_fmt_rev(rev_act)}{rev_proj_s}{rev_surp_s}"
 
-    return "\n".join(lines)
+        parts.append("")
+        parts.append(f"<b>{date}</b>")
+        parts.append(f"<code>{block}</code>")
+
+    return "\n".join(parts)
 
 
 def format_telegram_analysis(
