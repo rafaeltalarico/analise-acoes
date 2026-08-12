@@ -1,4 +1,7 @@
 import asyncio
+import os
+import time
+import httpx
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -10,6 +13,12 @@ load_dotenv()
 
 import yfinance as yf
 import pandas as pd
+
+# Cache de resultados de earnings por ticker (TTL de 24h)
+_earnings_cache: dict = {}
+_EARNINGS_CACHE_TTL = 86400  # segundos
+
+AV_BASE = "https://www.alphavantage.co/query"
 
 from services.snowflake_service import get_snowflake_analysis, get_peers, get_fallback_peers
 
@@ -164,11 +173,138 @@ def _score_bar(score: int, max_score: int, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+def _to_float_safe(value) -> Optional[float]:
+    """Converte com segurança valores da API para float."""
+    if value in (None, "None", ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _av_get(function: str, symbol: str, api_key: str) -> dict:
+    """Chama um endpoint da Alpha Vantage e retorna o JSON validado."""
+    params = {"function": function, "symbol": symbol, "apikey": api_key}
+    with httpx.Client(timeout=30) as client:
+        resp = client.get(AV_BASE, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+    if "Error Message" in data:
+        raise RuntimeError(data["Error Message"])
+    if "Note" in data or "Information" in data:
+        raise RuntimeError(f"Rate limit AV: {data.get('Note') or data.get('Information')}")
+    return data
+
+
 def _fetch_earnings_history(stock: yf.Ticker) -> list:
-    """Returns up to 6 past quarters of LPA (EPS) and Revenue actual vs estimate."""
+    """Retorna até 6 trimestres passados de LPA e Receita (real vs estimativa).
+
+    Com ALPHA_VANTAGE_API_KEY: usa AV EARNINGS + AV EARNINGS_ESTIMATES + yfinance
+    para receita real. Resultados cacheados por 24h para não estourar o limite
+    de 25 req/dia do plano gratuito. Sem chave: fallback para yfinance puro.
+    """
+    ticker = stock.ticker.upper()
+    api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
+
+    cached = _earnings_cache.get(ticker)
+    if cached and (time.time() - cached[0]) < _EARNINGS_CACHE_TTL:
+        return cached[1]
+
+    result = _fetch_via_alpha_vantage(stock, ticker, api_key) if api_key else []
+    if not result:
+        result = _fetch_via_yfinance(stock)
+
+    _earnings_cache[ticker] = (time.time(), result)
+    return result
+
+
+def _fetch_via_alpha_vantage(stock: yf.Ticker, ticker: str, api_key: str) -> list:
+    """LPA via AV EARNINGS, receita real via yfinance, estimativa de receita via AV EARNINGS_ESTIMATES."""
+    try:
+        av_earnings = _av_get("EARNINGS", ticker, api_key)
+        time.sleep(1.1)  # respeita limite de 1 req/seg
+        av_estimates = _av_get("EARNINGS_ESTIMATES", ticker, api_key)
+
+        # Receita real: yfinance quarterly_income_stmt (evita AV INCOME_STATEMENT)
+        rev_actuals: dict = {}
+        try:
+            qi = stock.quarterly_income_stmt
+            for row_name in ["Total Revenue", "TotalRevenue", "Revenue"]:
+                if row_name in qi.index:
+                    for col in qi.columns:
+                        val = qi.loc[row_name, col]
+                        if pd.notna(val):
+                            rev_actuals[pd.Timestamp(col).strftime("%Y-%m-%d")] = float(val)
+                    break
+        except Exception:
+            pass
+
+        # Estimativas de receita: AV EARNINGS_ESTIMATES (tem dados históricos)
+        rev_estimates: dict = {}
+        for est in av_estimates.get("estimates", []):
+            if est.get("horizon") != "fiscal quarter":
+                continue
+            val = _to_float_safe(est.get("revenue_estimate_average"))
+            if val is not None:
+                rev_estimates[est["date"]] = val
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        results = []
+        for entry in av_earnings.get("quarterlyEarnings", []):
+            reported_date = entry.get("reportedDate", "")
+            if not reported_date or reported_date > today:
+                continue  # ainda não reportado
+
+            lpa_act = _to_float_safe(entry.get("reportedEPS"))
+            if lpa_act is None:
+                continue
+
+            lpa_est  = _to_float_safe(entry.get("estimatedEPS"))
+            lpa_surp = _to_float_safe(entry.get("surprisePercentage"))
+            lpa_beat = (lpa_act > lpa_est if lpa_act != lpa_est else None) if lpa_est is not None else None
+
+            fiscal_date = entry.get("fiscalDateEnding", "")
+            rev_act = rev_actuals.get(fiscal_date)
+            rev_est = rev_estimates.get(fiscal_date)
+            rev_surp = None
+            rev_beat = None
+            if rev_act is not None and rev_est:
+                rev_surp = round((rev_act - rev_est) / abs(rev_est) * 100, 2)
+                rev_beat = rev_act > rev_est if rev_act != rev_est else None
+
+            try:
+                date_label = pd.Timestamp(fiscal_date).strftime("%b %Y")
+            except Exception:
+                date_label = fiscal_date
+
+            results.append({
+                "date": date_label,
+                "lpa_estimate": round(lpa_est, 2) if lpa_est is not None else None,
+                "lpa_actual": round(lpa_act, 2),
+                "lpa_surprise_pct": round(lpa_surp, 2) if lpa_surp is not None else None,
+                "lpa_beat": lpa_beat,
+                "rev_estimate": rev_est,
+                "rev_actual": rev_act,
+                "rev_surprise_pct": rev_surp,
+                "rev_beat": rev_beat,
+            })
+
+            if len(results) == 6:
+                break
+
+        return results
+
+    except Exception as e:
+        print(f"Erro Alpha Vantage earnings ({ticker}): {e}")
+        return []
+
+
+def _fetch_via_yfinance(stock: yf.Ticker) -> list:
+    """Fallback: LPA e receita (quando disponível) via yfinance earnings_dates."""
     try:
         df = stock.earnings_dates
-        if df is None or df.empty:
+        if df is None or df.empty or "Reported EPS" not in df.columns:
             return []
 
         past = df[df["Reported EPS"].notna()].sort_index(ascending=False).head(6)
@@ -176,59 +312,43 @@ def _fetch_earnings_history(stock: yf.Ticker) -> list:
             return []
 
         has_rev = "Reported Revenue" in df.columns and "Revenue Estimate" in df.columns
-
         results = []
         for dt, row in past.iterrows():
-            ts = pd.Timestamp(dt)
-            date_label = ts.strftime("%b %Y")
+            date_label = pd.Timestamp(dt).strftime("%b %Y")
 
-            lpa_est = row.get("EPS Estimate")
-            lpa_act = row.get("Reported EPS")
+            lpa_est  = row.get("EPS Estimate")
+            lpa_act  = row.get("Reported EPS")
             lpa_surp = row.get("Surprise(%)")
 
-            lpa_est_f = None if (lpa_est is None or pd.isna(lpa_est)) else round(float(lpa_est), 2)
-            lpa_act_f = None if (lpa_act is None or pd.isna(lpa_act)) else round(float(lpa_act), 2)
+            lpa_est_f  = None if (lpa_est is None or pd.isna(lpa_est))  else round(float(lpa_est), 2)
+            lpa_act_f  = None if (lpa_act is None or pd.isna(lpa_act))  else round(float(lpa_act), 2)
             lpa_surp_f = None if (lpa_surp is None or pd.isna(lpa_surp)) else round(float(lpa_surp), 2)
-
-            lpa_beat = None
-            if lpa_act_f is not None and lpa_est_f is not None:
-                lpa_beat = True if lpa_act_f > lpa_est_f else (False if lpa_act_f < lpa_est_f else None)
+            lpa_beat   = (lpa_act_f > lpa_est_f if lpa_act_f != lpa_est_f else None) if lpa_act_f is not None and lpa_est_f is not None else None
 
             entry = {
                 "date": date_label,
-                "lpa_estimate": lpa_est_f,
-                "lpa_actual": lpa_act_f,
-                "lpa_surprise_pct": lpa_surp_f,
-                "lpa_beat": lpa_beat,
-                "rev_estimate": None,
-                "rev_actual": None,
-                "rev_surprise_pct": None,
-                "rev_beat": None,
+                "lpa_estimate": lpa_est_f, "lpa_actual": lpa_act_f,
+                "lpa_surprise_pct": lpa_surp_f, "lpa_beat": lpa_beat,
+                "rev_estimate": None, "rev_actual": None,
+                "rev_surprise_pct": None, "rev_beat": None,
             }
 
             if has_rev:
-                rev_est = row.get("Revenue Estimate")
-                rev_act = row.get("Reported Revenue")
+                rev_est  = row.get("Revenue Estimate")
+                rev_act  = row.get("Reported Revenue")
                 rev_surp = row.get("Revenue Surprise(%)")
-
-                rev_est_f = None if (rev_est is None or pd.isna(rev_est)) else float(rev_est)
-                rev_act_f = None if (rev_act is None or pd.isna(rev_act)) else float(rev_act)
+                rev_est_f  = None if (rev_est is None or pd.isna(rev_est))  else float(rev_est)
+                rev_act_f  = None if (rev_act is None or pd.isna(rev_act))  else float(rev_act)
                 rev_surp_f = None if (rev_surp is None or pd.isna(rev_surp)) else round(float(rev_surp), 2)
-
-                rev_beat = None
-                if rev_act_f is not None and rev_est_f is not None:
-                    rev_beat = True if rev_act_f > rev_est_f else (False if rev_act_f < rev_est_f else None)
-
-                entry["rev_estimate"] = rev_est_f
-                entry["rev_actual"] = rev_act_f
-                entry["rev_surprise_pct"] = rev_surp_f
-                entry["rev_beat"] = rev_beat
+                rev_beat   = (rev_act_f > rev_est_f if rev_act_f != rev_est_f else None) if rev_act_f is not None and rev_est_f is not None else None
+                entry.update({"rev_estimate": rev_est_f, "rev_actual": rev_act_f, "rev_surprise_pct": rev_surp_f, "rev_beat": rev_beat})
 
             results.append(entry)
 
         return results
+
     except Exception as e:
-        print(f"Erro ao buscar earnings history: {e}")
+        print(f"Erro yfinance earnings history: {e}")
         return []
 
 
