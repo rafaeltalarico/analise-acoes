@@ -34,27 +34,6 @@ app.add_middleware(
 
 STEP_TIMEOUT = 30
 
-# Curated list of liquid US stocks for market movers feature
-LIQUID_STOCKS = list(dict.fromkeys([
-    # Mega Cap Tech
-    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AVGO", "ORCL", "ADBE",
-    # Large Cap Tech
-    "AMD", "INTC", "QCOM", "CRM", "NFLX", "IBM", "TXN", "AMAT", "MU", "NOW",
-    # Healthcare
-    "UNH", "JNJ", "LLY", "ABBV", "MRK", "PFE", "TMO", "ABT", "DHR", "CVS",
-    # Financials
-    "JPM", "BAC", "WFC", "GS", "MS", "V", "MA", "AXP", "BLK", "C",
-    # Consumer
-    "HD", "MCD", "NKE", "SBUX", "TGT", "COST", "WMT", "LOW", "TJX",
-    # Energy
-    "XOM", "CVX", "COP", "SLB", "EOG", "OXY",
-    # Industrials
-    "GE", "BA", "CAT", "HON", "UNP", "UPS", "DE", "LMT", "RTX",
-    # Communication
-    "DIS", "CMCSA", "WBD",
-    # Defensive / Other
-    "PG", "KO", "PEP", "CL", "PM", "NEE", "DUK", "PLD", "AMT", "EQIX",
-]))
 
 SECTOR_NAMES = [
     "Technology", "Healthcare", "Financial Services",
@@ -214,7 +193,9 @@ def _to_float_safe(value) -> Optional[float]:
 
 def _av_get(function: str, symbol: str, api_key: str) -> dict:
     """Chama um endpoint da Alpha Vantage e retorna o JSON validado."""
-    params = {"function": function, "symbol": symbol, "apikey": api_key}
+    params: dict = {"function": function, "apikey": api_key}
+    if symbol:
+        params["symbol"] = symbol
     with httpx.Client(timeout=30) as client:
         resp = client.get(AV_BASE, params=params)
     resp.raise_for_status()
@@ -694,49 +675,31 @@ async def telegram_analyze(ticker: str):
 
 @app.get("/api/market/movers")
 async def market_movers(type: str = "gainers", limit: int = 5):
-    """Top gainers or losers from a curated list of liquid US stocks."""
+    """Top gainers or losers via Alpha Vantage TOP_GAINERS_LOSERS."""
     if type not in ("gainers", "losers"):
         raise HTTPException(status_code=400, detail="type deve ser 'gainers' ou 'losers'")
     limit = max(1, min(15, limit))
 
+    api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ALPHA_VANTAGE_API_KEY não configurada.")
+
     try:
-        data = await asyncio.to_thread(
-            lambda: yf.download(
-                LIQUID_STOCKS,
-                period="2d",
-                interval="1d",
-                progress=False,
-                auto_adjust=True,
-            )
-        )
+        data = await asyncio.to_thread(_av_get, "TOP_GAINERS_LOSERS", "", api_key)
 
-        close = _get_close_df(data)
-        if close.empty or len(close) < 2:
-            raise HTTPException(status_code=502, detail="Dados de mercado insuficientes.")
-
-        changes = {}
-        for sym in LIQUID_STOCKS:
-            if sym in close.columns:
-                prev = close[sym].iloc[-2]
-                curr = close[sym].iloc[-1]
-                if pd.notna(prev) and pd.notna(curr) and float(prev) > 0:
-                    changes[sym] = round((float(curr) - float(prev)) / float(prev) * 100, 2)
-
-        sorted_pairs = sorted(
-            changes.items(),
-            key=lambda x: x[1],
-            reverse=(type == "gainers"),
-        )
+        key = "top_gainers" if type == "gainers" else "top_losers"
+        items = data.get(key, [])
 
         results = []
-        for sym, chg_pct in sorted_pairs[:limit]:
-            curr_price = float(close[sym].iloc[-1])
-            prev_price = float(close[sym].iloc[-2])
+        for item in items[:limit]:
+            price     = _to_float_safe(item.get("price"))
+            change    = _to_float_safe(item.get("change_amount"))
+            change_pct = _to_float_safe(str(item.get("change_percentage", "")).replace("%", ""))
             results.append({
-                "ticker":     sym,
-                "price":      round(curr_price, 2),
-                "change":     round(curr_price - prev_price, 2),
-                "change_pct": chg_pct,
+                "ticker":     item.get("ticker", ""),
+                "price":      round(price, 2) if price is not None else None,
+                "change":     round(change, 2) if change is not None else None,
+                "change_pct": round(change_pct, 2) if change_pct is not None else None,
             })
 
         return {
