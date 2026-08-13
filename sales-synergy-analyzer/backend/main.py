@@ -1,5 +1,8 @@
 import asyncio
+import email as email_lib
+import imaplib
 import os
+import re
 import time
 import httpx
 from datetime import datetime, timezone
@@ -772,6 +775,106 @@ async def market_sector_stocks(sector_name: str, limit: int = 10):
         s.pop("market_cap", None)
 
     return {"sector": normalized, "results": top}
+
+
+def _fetch_gurufocus_body() -> tuple[str, str]:
+    """Conecta ao Gmail via IMAP e retorna (assunto, corpo) do email mais recente do GuruFocus."""
+    gmail_user = os.getenv("GMAIL_USER", "")
+    gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "")
+    if not gmail_user or not gmail_pass:
+        raise RuntimeError("GMAIL_USER ou GMAIL_APP_PASSWORD não configurados.")
+
+    with imaplib.IMAP4_SSL("imap.gmail.com") as mail:
+        mail.login(gmail_user, gmail_pass)
+        mail.select("inbox")
+
+        _, data = mail.search(None, 'FROM "gurufocus@gurufocus.com"')
+        ids = data[0].split()
+        if not ids:
+            raise RuntimeError("Nenhum email do GuruFocus encontrado na caixa de entrada.")
+
+        # Pega o mais recente
+        _, msg_data = mail.fetch(ids[-1], "(RFC822)")
+        msg = email_lib.message_from_bytes(msg_data[0][1])
+
+        # Assunto
+        subject = email_lib.header.decode_header(msg["Subject"])[0]
+        subject_str = subject[0].decode(subject[1] or "utf-8") if isinstance(subject[0], bytes) else subject[0]
+
+        # Corpo: prefere text/plain
+        body = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    charset = part.get_content_charset() or "utf-8"
+                    body = part.get_payload(decode=True).decode(charset, errors="replace")
+                    break
+        else:
+            charset = msg.get_content_charset() or "utf-8"
+            body = msg.get_payload(decode=True).decode(charset, errors="replace")
+
+        return subject_str, body
+
+
+def _parse_stock_news(body: str) -> list[str]:
+    """Extrai os bullet points da seção 'Stock News' do corpo do email."""
+    # Localiza a seção Stock News
+    match = re.search(r"Stock News\s*\n(.*?)(?:\n[A-Z][^\n]{2,}\n|\Z)", body, re.DOTALL)
+    if not match:
+        return []
+
+    section = match.group(1)
+    items = []
+
+    for line in section.splitlines():
+        line = line.strip()
+        if not line.startswith("*"):
+            continue
+
+        line = line[1:].strip()
+
+        # Remove "Source: [Nome](url)" no final
+        line = re.sub(r"\s*Source:\s*\[[^\]]+\]\([^)]+\)\.?\s*$", "", line)
+
+        # Simplifica links de tickers [AAPL](url) → AAPL
+        line = re.sub(r"\[([A-Z]{1,5})\]\([^)]+\)", r"\1", line)
+
+        # Remove links genéricos [texto](url) → texto
+        line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
+
+        line = line.strip().rstrip(".")
+        if line:
+            items.append(line)
+
+    return items
+
+
+@app.get("/api/market/summary")
+async def market_summary():
+    """Retorna as Stock News do email mais recente do GuruFocus (First Look ou Market Today)."""
+    try:
+        subject, body = await asyncio.to_thread(_fetch_gurufocus_body)
+        news = _parse_stock_news(body)
+
+        # Detecta o tipo do email pelo assunto
+        if "First Look" in subject:
+            email_type = "First Look"
+        elif "Market Today" in subject:
+            email_type = "Market Today"
+        else:
+            email_type = "GuruFocus"
+
+        return {
+            "date":       datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "email_type": email_type,
+            "subject":    subject,
+            "news":       news,
+            "empty":      len(news) == 0,
+        }
+
+    except Exception as e:
+        print(f"[summary] erro: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 if __name__ == "__main__":
