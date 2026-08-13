@@ -18,7 +18,8 @@ import pandas as pd
 _earnings_cache: dict = {}
 _EARNINGS_CACHE_TTL = 86400  # segundos
 
-AV_BASE = "https://www.alphavantage.co/query"
+AV_BASE  = "https://www.alphavantage.co/query"
+FMP_BASE = "https://financialmodelingprep.com/api/v3"
 
 from services.snowflake_service import get_snowflake_analysis, get_peers, get_fallback_peers
 
@@ -673,34 +674,69 @@ async def telegram_analyze(ticker: str):
     return {"ticker": ticker, "text": text, "parse_mode": "HTML"}
 
 
+def _fmp_get_movers(endpoint: str, api_key: str) -> list:
+    """Chama biggest-gainers ou biggest-losers do FMP e retorna a lista bruta."""
+    url = f"{FMP_BASE}/{endpoint}"
+    with httpx.Client(timeout=30) as client:
+        resp = client.get(url, params={"apikey": api_key})
+    resp.raise_for_status()
+    data = resp.json()
+    if isinstance(data, dict) and "Error Message" in data:
+        raise RuntimeError(data["Error Message"])
+    return data if isinstance(data, list) else []
+
+
+def _filter_movers(items: list, limit: int) -> list:
+    """Remove penny stocks, warrants e SPACs; retorna os top `limit` já limpos."""
+    MIN_PRICE  = 10.0
+    MIN_VOLUME = 500_000
+
+    results = []
+    for item in items:
+        symbol = item.get("symbol", "")
+        price  = _to_float_safe(item.get("price"))
+        volume = _to_float_safe(item.get("volume"))
+
+        # Exclui warrants (W), units de SPAC (U), preferenciais/estrangeiras (.)
+        if symbol.endswith(("W", "U")) or "." in symbol:
+            continue
+        if price is None or price < MIN_PRICE:
+            continue
+        if volume is None or volume < MIN_VOLUME:
+            continue
+
+        change     = _to_float_safe(item.get("change"))
+        change_pct = _to_float_safe(item.get("changesPercentage"))
+        results.append({
+            "ticker":     symbol,
+            "name":       item.get("name", ""),
+            "price":      round(price, 2),
+            "change":     round(change, 2) if change is not None else None,
+            "change_pct": round(change_pct, 2) if change_pct is not None else None,
+        })
+
+        if len(results) == limit:
+            break
+
+    return results
+
+
 @app.get("/api/market/movers")
 async def market_movers(type: str = "gainers", limit: int = 5):
-    """Top gainers or losers via Alpha Vantage TOP_GAINERS_LOSERS."""
+    """Top gainers ou losers via FMP, filtrados por preço e volume mínimos."""
     if type not in ("gainers", "losers"):
         raise HTTPException(status_code=400, detail="type deve ser 'gainers' ou 'losers'")
     limit = max(1, min(15, limit))
 
-    api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
+    api_key = os.getenv("FMP_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=503, detail="ALPHA_VANTAGE_API_KEY não configurada.")
+        raise HTTPException(status_code=503, detail="FMP_API_KEY não configurada.")
+
+    endpoint = "stock_market/gainers" if type == "gainers" else "stock_market/losers"
 
     try:
-        data = await asyncio.to_thread(_av_get, "TOP_GAINERS_LOSERS", "", api_key)
-
-        key = "top_gainers" if type == "gainers" else "top_losers"
-        items = data.get(key, [])
-
-        results = []
-        for item in items[:limit]:
-            price     = _to_float_safe(item.get("price"))
-            change    = _to_float_safe(item.get("change_amount"))
-            change_pct = _to_float_safe(str(item.get("change_percentage", "")).replace("%", ""))
-            results.append({
-                "ticker":     item.get("ticker", ""),
-                "price":      round(price, 2) if price is not None else None,
-                "change":     round(change, 2) if change is not None else None,
-                "change_pct": round(change_pct, 2) if change_pct is not None else None,
-            })
+        raw = await asyncio.to_thread(_fmp_get_movers, endpoint, api_key)
+        results = _filter_movers(raw, limit)
 
         return {
             "type": type,
