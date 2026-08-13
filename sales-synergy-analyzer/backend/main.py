@@ -861,34 +861,58 @@ def _fetch_gurufocus_body() -> tuple[str, str]:
         return subject_str, body
 
 
+def _fix_encoding(text: str) -> str:
+    """Corrige encoding quebrado (latin-1 mal interpretado como UTF-8)."""
+    try:
+        return text.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
 def _parse_stock_news(body: str) -> list[str]:
-    """Extrai os bullet points da seção 'Stock News' do corpo do email."""
-    # Localiza a seção Stock News
-    match = re.search(r"Stock News\s*\n(.*?)(?:\n[A-Z][^\n]{2,}\n|\Z)", body, re.DOTALL)
-    if not match:
+    """Extrai Stock News do corpo do email GuruFocus (text/plain ou HTML convertido)."""
+    m = re.search(r"Stock News\s*\n", body)
+    if not m:
         return []
 
-    section = match.group(1)
+    after = body[m.end():]
     items = []
 
-    for line in section.splitlines():
+    # --- Formato markdown (text/plain): linhas com "* Título: Desc. Source: [X](url)" ---
+    if re.search(r"^\*\s+\w", after, re.MULTILINE):
+        for line in after.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # Para na próxima seção (linha curta, sem *)
+            if not line.startswith("*") and re.match(r"^[A-Z][A-Za-z\s]{2,35}$", line):
+                break
+            if not line.startswith("*"):
+                continue
+            line = line[1:].strip()
+            line = re.sub(r"\s*Source:\s*\[[^\]]+\]\([^)]+\)\.?\s*$", "", line)
+            line = re.sub(r"\[([A-Z]{1,5})\]\([^)]+\)", r"\1", line)
+            line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
+            line = _fix_encoding(line).strip().rstrip(".")
+            if line:
+                items.append(line)
+        return items
+
+    # --- Formato HTML convertido: linhas planas "Título: Descrição. Source: Nome." ---
+    for line in after.splitlines():
         line = line.strip()
-        if not line.startswith("*"):
+        if not line:
             continue
-
-        line = line[1:].strip()
-
-        # Remove "Source: [Nome](url)" no final
-        line = re.sub(r"\s*Source:\s*\[[^\]]+\]\([^)]+\)\.?\s*$", "", line)
-
-        # Simplifica links de tickers [AAPL](url) → AAPL
-        line = re.sub(r"\[([A-Z]{1,5})\]\([^)]+\)", r"\1", line)
-
-        # Remove links genéricos [texto](url) → texto
-        line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
-
-        line = line.strip().rstrip(".")
-        if line:
+        # Para na próxima seção (linha curta, sem dois-pontos, título capitalizado)
+        if len(line) < 45 and ": " not in line and re.match(r"^[A-Z][A-Za-z\s]+$", line):
+            break
+        # Aceita apenas linhas com padrão "Algo: descrição"
+        if ": " not in line:
+            continue
+        # Remove "Source: Nome." no final
+        line = re.sub(r"\s*Source:\s*[^.]+\.\s*$", "", line)
+        line = _fix_encoding(line).strip().rstrip(".")
+        if len(line) > 20:
             items.append(line)
 
     return items
