@@ -675,21 +675,17 @@ async def telegram_analyze(ticker: str):
 
 def _filter_movers(items: list, ticker_key: str, pct_key: str, limit: int) -> list:
     """Remove penny stocks, warrants e SPACs; retorna os top `limit` já limpos."""
-    MIN_PRICE  = 10.0
-    MIN_VOLUME = 500_000
+    MIN_PRICE = 10.0
 
     results = []
     for item in items:
         symbol = item.get(ticker_key, "")
         price  = _to_float_safe(item.get("price"))
-        volume = _to_float_safe(item.get("volume"))
 
         # Exclui warrants (W), units de SPAC (U), preferenciais/estrangeiras (.)
         if symbol.endswith(("W", "U")) or "." in symbol:
             continue
         if price is None or price < MIN_PRICE:
-            continue
-        if volume is None or volume < MIN_VOLUME:
             continue
 
         change_pct = _to_float_safe(
