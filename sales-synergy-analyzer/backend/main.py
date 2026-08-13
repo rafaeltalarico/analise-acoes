@@ -894,6 +894,13 @@ def _parse_stock_news(body: str) -> list[str]:
     return items
 
 
+@app.get("/api/market/summary/debug")
+async def market_summary_debug():
+    """Retorna os primeiros 3000 chars do corpo bruto para diagnóstico."""
+    subject, body = await asyncio.to_thread(_fetch_gurufocus_body)
+    return {"subject": subject, "body_preview": body[:3000]}
+
+
 @app.get("/api/market/summary")
 async def market_summary():
     """Retorna as Stock News do email mais recente do GuruFocus (First Look ou Market Today)."""
