@@ -679,10 +679,11 @@ def _fmp_get_movers(endpoint: str, api_key: str) -> list:
     url = f"{FMP_BASE}/{endpoint}"
     with httpx.Client(timeout=30) as client:
         resp = client.get(url, params={"apikey": api_key})
-    resp.raise_for_status()
+    if not resp.is_success:
+        raise RuntimeError(f"FMP HTTP {resp.status_code}: {resp.text[:200]}")
     data = resp.json()
-    if isinstance(data, dict) and "Error Message" in data:
-        raise RuntimeError(data["Error Message"])
+    if isinstance(data, dict) and ("Error Message" in data or "message" in data):
+        raise RuntimeError(data.get("Error Message") or data.get("message"))
     return data if isinstance(data, list) else []
 
 
@@ -732,7 +733,7 @@ async def market_movers(type: str = "gainers", limit: int = 5):
     if not api_key:
         raise HTTPException(status_code=503, detail="FMP_API_KEY não configurada.")
 
-    endpoint = "stock_market/gainers" if type == "gainers" else "stock_market/losers"
+    endpoint = "biggest-gainers" if type == "gainers" else "biggest-losers"
 
     try:
         raw = await asyncio.to_thread(_fmp_get_movers, endpoint, api_key)
@@ -747,6 +748,7 @@ async def market_movers(type: str = "gainers", limit: int = 5):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"[movers] erro FMP ({endpoint}): {e}")
         raise HTTPException(status_code=502, detail=f"Erro ao buscar movers: {str(e)}")
 
 
