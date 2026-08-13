@@ -673,10 +673,8 @@ async def telegram_analyze(ticker: str):
     return {"ticker": ticker, "text": text, "parse_mode": "HTML"}
 
 
-def _filter_movers(items: list, ticker_key: str, pct_key: str, limit: int) -> list:
+def _filter_movers(items: list, ticker_key: str, pct_key: str, limit: int, min_price: float = 10.0) -> list:
     """Remove penny stocks, warrants e SPACs; retorna os top `limit` já limpos."""
-    MIN_PRICE = 10.0
-
     results = []
     for item in items:
         symbol = item.get(ticker_key, "")
@@ -685,7 +683,7 @@ def _filter_movers(items: list, ticker_key: str, pct_key: str, limit: int) -> li
         # Exclui warrants (W), units de SPAC (U), preferenciais/estrangeiras (.)
         if symbol.endswith(("W", "U")) or "." in symbol:
             continue
-        if price is None or price < MIN_PRICE:
+        if price is None or price < min_price:
             continue
 
         change_pct = _to_float_safe(
@@ -721,12 +719,17 @@ async def market_movers(type: str = "gainers", limit: int = 5):
 
         av_key = "top_gainers" if type == "gainers" else "top_losers"
         raw    = data.get(av_key, [])
-        results = _filter_movers(raw, "ticker", "change_percentage", limit)
+
+        # Primeira passagem: preço >= $10. Fallback: >= $5 se lista vier vazia.
+        results = _filter_movers(raw, "ticker", "change_percentage", limit, min_price=10.0)
+        if not results:
+            results = _filter_movers(raw, "ticker", "change_percentage", limit, min_price=5.0)
 
         return {
-            "type": type,
-            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "type":    type,
+            "date":    datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "results": results,
+            "empty":   len(results) == 0,
         }
 
     except HTTPException:
