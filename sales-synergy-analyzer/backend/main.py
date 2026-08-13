@@ -673,23 +673,25 @@ async def telegram_analyze(ticker: str):
     return {"ticker": ticker, "text": text, "parse_mode": "HTML"}
 
 
-def _filter_movers(items: list, ticker_key: str, pct_key: str, limit: int, min_price: float = 10.0) -> list:
-    """Remove penny stocks, warrants e SPACs; retorna os top `limit` já limpos."""
-    results = []
-    for item in items:
-        symbol = item.get(ticker_key, "")
-        price  = _to_float_safe(item.get("price"))
+def _yf_screen_movers(mover_type: str, limit: int) -> list:
+    """Busca gainers/losers via yfinance Screener (mesmos dados do Yahoo Finance)."""
+    from yfinance.screener.screener import screen
+    screener_id = "day_gainers" if mover_type == "gainers" else "day_losers"
+    data   = screen(screener_id, count=max(limit * 4, 25))
+    quotes = data.get("quotes", [])
 
-        # Exclui warrants (W), units de SPAC (U), preferenciais/estrangeiras (.)
+    results = []
+    for q in quotes:
+        symbol = q.get("symbol", "")
+        price  = _to_float_safe(q.get("regularMarketPrice"))
+
         if symbol.endswith(("W", "U")) or "." in symbol:
             continue
-        if price is None or price < min_price:
+        if price is None or price < 5.0:
             continue
 
-        change_pct = _to_float_safe(
-            str(item.get(pct_key, "")).replace("%", "")
-        )
-        change = _to_float_safe(item.get("change_amount"))
+        change     = _to_float_safe(q.get("regularMarketChange"))
+        change_pct = _to_float_safe(q.get("regularMarketChangePercent"))
         results.append({
             "ticker":     symbol,
             "price":      round(price, 2),
@@ -705,26 +707,13 @@ def _filter_movers(items: list, ticker_key: str, pct_key: str, limit: int, min_p
 
 @app.get("/api/market/movers")
 async def market_movers(type: str = "gainers", limit: int = 5):
-    """Top gainers ou losers via Alpha Vantage, filtrados por preço e volume mínimos."""
+    """Top gainers ou losers via yfinance Screener (dados do Yahoo Finance)."""
     if type not in ("gainers", "losers"):
         raise HTTPException(status_code=400, detail="type deve ser 'gainers' ou 'losers'")
     limit = max(1, min(15, limit))
 
-    api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="ALPHA_VANTAGE_API_KEY não configurada.")
-
     try:
-        data = await asyncio.to_thread(_av_get, "TOP_GAINERS_LOSERS", "", api_key)
-
-        av_key = "top_gainers" if type == "gainers" else "top_losers"
-        raw    = data.get(av_key, [])
-
-        # Primeira passagem: preço >= $10. Fallback: >= $5 se lista vier vazia.
-        results = _filter_movers(raw, "ticker", "change_percentage", limit, min_price=10.0)
-        if not results:
-            results = _filter_movers(raw, "ticker", "change_percentage", limit, min_price=5.0)
-
+        results = await asyncio.to_thread(_yf_screen_movers, type, limit)
         return {
             "type":    type,
             "date":    datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -735,7 +724,7 @@ async def market_movers(type: str = "gainers", limit: int = 5):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[movers] erro AV: {e}")
+        print(f"[movers] erro screener: {e}")
         raise HTTPException(status_code=502, detail=f"Erro ao buscar movers: {str(e)}")
 
 
