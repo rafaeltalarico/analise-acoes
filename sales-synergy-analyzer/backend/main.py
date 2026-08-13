@@ -838,6 +838,7 @@ def _fetch_gurufocus_body() -> tuple[str, str]:
             if isinstance(subject_parts[0], bytes)
             else subject_parts[0]
         )
+        subject_str = _fix_encoding(subject_str)
 
         # Corpo: prefere text/plain; fallback para HTML convertido
         plain = html = ""
@@ -917,12 +918,6 @@ def _parse_stock_news(body: str) -> list[str]:
 
     return items
 
-
-@app.get("/api/market/summary/debug")
-async def market_summary_debug():
-    """Retorna os primeiros 3000 chars do corpo bruto para diagnóstico."""
-    subject, body = await asyncio.to_thread(_fetch_gurufocus_body)
-    return {"subject": subject, "body_preview": body[:3000]}
 
 
 @app.get("/api/market/summary")
