@@ -18,8 +18,7 @@ import pandas as pd
 _earnings_cache: dict = {}
 _EARNINGS_CACHE_TTL = 86400  # segundos
 
-AV_BASE  = "https://www.alphavantage.co/query"
-FMP_BASE = "https://financialmodelingprep.com/api/v3"
+AV_BASE = "https://www.alphavantage.co/query"
 
 from services.snowflake_service import get_snowflake_analysis, get_peers, get_fallback_peers
 
@@ -674,27 +673,14 @@ async def telegram_analyze(ticker: str):
     return {"ticker": ticker, "text": text, "parse_mode": "HTML"}
 
 
-def _fmp_get_movers(endpoint: str, api_key: str) -> list:
-    """Chama biggest-gainers ou biggest-losers do FMP e retorna a lista bruta."""
-    url = f"{FMP_BASE}/{endpoint}"
-    with httpx.Client(timeout=30) as client:
-        resp = client.get(url, params={"apikey": api_key})
-    if not resp.is_success:
-        raise RuntimeError(f"FMP HTTP {resp.status_code}: {resp.text[:200]}")
-    data = resp.json()
-    if isinstance(data, dict) and ("Error Message" in data or "message" in data):
-        raise RuntimeError(data.get("Error Message") or data.get("message"))
-    return data if isinstance(data, list) else []
-
-
-def _filter_movers(items: list, limit: int) -> list:
+def _filter_movers(items: list, ticker_key: str, pct_key: str, limit: int) -> list:
     """Remove penny stocks, warrants e SPACs; retorna os top `limit` já limpos."""
     MIN_PRICE  = 10.0
     MIN_VOLUME = 500_000
 
     results = []
     for item in items:
-        symbol = item.get("symbol", "")
+        symbol = item.get(ticker_key, "")
         price  = _to_float_safe(item.get("price"))
         volume = _to_float_safe(item.get("volume"))
 
@@ -706,11 +692,12 @@ def _filter_movers(items: list, limit: int) -> list:
         if volume is None or volume < MIN_VOLUME:
             continue
 
-        change     = _to_float_safe(item.get("change"))
-        change_pct = _to_float_safe(item.get("changesPercentage"))
+        change_pct = _to_float_safe(
+            str(item.get(pct_key, "")).replace("%", "")
+        )
+        change = _to_float_safe(item.get("change_amount"))
         results.append({
             "ticker":     symbol,
-            "name":       item.get("name", ""),
             "price":      round(price, 2),
             "change":     round(change, 2) if change is not None else None,
             "change_pct": round(change_pct, 2) if change_pct is not None else None,
@@ -724,20 +711,21 @@ def _filter_movers(items: list, limit: int) -> list:
 
 @app.get("/api/market/movers")
 async def market_movers(type: str = "gainers", limit: int = 5):
-    """Top gainers ou losers via FMP, filtrados por preço e volume mínimos."""
+    """Top gainers ou losers via Alpha Vantage, filtrados por preço e volume mínimos."""
     if type not in ("gainers", "losers"):
         raise HTTPException(status_code=400, detail="type deve ser 'gainers' ou 'losers'")
     limit = max(1, min(15, limit))
 
-    api_key = os.getenv("FMP_API_KEY")
+    api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=503, detail="FMP_API_KEY não configurada.")
-
-    endpoint = "biggest-gainers" if type == "gainers" else "biggest-losers"
+        raise HTTPException(status_code=503, detail="ALPHA_VANTAGE_API_KEY não configurada.")
 
     try:
-        raw = await asyncio.to_thread(_fmp_get_movers, endpoint, api_key)
-        results = _filter_movers(raw, limit)
+        data = await asyncio.to_thread(_av_get, "TOP_GAINERS_LOSERS", "", api_key)
+
+        av_key = "top_gainers" if type == "gainers" else "top_losers"
+        raw    = data.get(av_key, [])
+        results = _filter_movers(raw, "ticker", "change_percentage", limit)
 
         return {
             "type": type,
@@ -748,7 +736,7 @@ async def market_movers(type: str = "gainers", limit: int = 5):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[movers] erro FMP ({endpoint}): {e}")
+        print(f"[movers] erro AV: {e}")
         raise HTTPException(status_code=502, detail=f"Erro ao buscar movers: {str(e)}")
 
 
