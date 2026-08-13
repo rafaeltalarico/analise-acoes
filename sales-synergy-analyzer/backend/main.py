@@ -777,8 +777,37 @@ async def market_sector_stocks(sector_name: str, limit: int = 10):
     return {"sector": normalized, "results": top}
 
 
+def _html_to_text(html: str) -> str:
+    """Converte HTML para texto simples usando html.parser da stdlib."""
+    from html.parser import HTMLParser
+
+    class _Extractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.parts: list[str] = []
+            self._skip = False
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("script", "style"):
+                self._skip = True
+            if tag in ("p", "br", "li", "div", "tr"):
+                self.parts.append("\n")
+
+        def handle_endtag(self, tag):
+            if tag in ("script", "style"):
+                self._skip = False
+
+        def handle_data(self, data):
+            if not self._skip:
+                self.parts.append(data)
+
+    extractor = _Extractor()
+    extractor.feed(html)
+    return "".join(extractor.parts)
+
+
 def _fetch_gurufocus_body() -> tuple[str, str]:
-    """Conecta ao Gmail via IMAP e retorna (assunto, corpo) do email mais recente do GuruFocus."""
+    """Conecta ao Gmail via IMAP e retorna (assunto, corpo) do email First Look ou Market Today mais recente."""
     gmail_user = os.getenv("GMAIL_USER", "")
     gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "")
     if not gmail_user or not gmail_pass:
@@ -788,31 +817,47 @@ def _fetch_gurufocus_body() -> tuple[str, str]:
         mail.login(gmail_user, gmail_pass)
         mail.select("inbox")
 
-        _, data = mail.search(None, 'FROM "gurufocus@gurufocus.com"')
-        ids = data[0].split()
+        # Busca emails com "First Look" ou "Market Today" no assunto
+        _, d1 = mail.search(None, 'FROM "gurufocus@gurufocus.com" SUBJECT "First Look"')
+        _, d2 = mail.search(None, 'FROM "gurufocus@gurufocus.com" SUBJECT "Market Today"')
+        ids1 = d1[0].split() if d1[0] else []
+        ids2 = d2[0].split() if d2[0] else []
+        ids = sorted(ids1 + ids2, key=int)
+
         if not ids:
-            raise RuntimeError("Nenhum email do GuruFocus encontrado na caixa de entrada.")
+            raise RuntimeError("Nenhum email 'First Look' ou 'Market Today' do GuruFocus encontrado.")
 
         # Pega o mais recente
         _, msg_data = mail.fetch(ids[-1], "(RFC822)")
         msg = email_lib.message_from_bytes(msg_data[0][1])
 
         # Assunto
-        subject = email_lib.header.decode_header(msg["Subject"])[0]
-        subject_str = subject[0].decode(subject[1] or "utf-8") if isinstance(subject[0], bytes) else subject[0]
+        subject_parts = email_lib.header.decode_header(msg["Subject"])[0]
+        subject_str = (
+            subject_parts[0].decode(subject_parts[1] or "utf-8")
+            if isinstance(subject_parts[0], bytes)
+            else subject_parts[0]
+        )
 
-        # Corpo: prefere text/plain
-        body = ""
+        # Corpo: prefere text/plain; fallback para HTML convertido
+        plain = html = ""
         if msg.is_multipart():
             for part in msg.walk():
-                if part.get_content_type() == "text/plain":
-                    charset = part.get_content_charset() or "utf-8"
-                    body = part.get_payload(decode=True).decode(charset, errors="replace")
-                    break
+                ct = part.get_content_type()
+                charset = part.get_content_charset() or "utf-8"
+                if ct == "text/plain" and not plain:
+                    plain = part.get_payload(decode=True).decode(charset, errors="replace")
+                elif ct == "text/html" and not html:
+                    html = part.get_payload(decode=True).decode(charset, errors="replace")
         else:
             charset = msg.get_content_charset() or "utf-8"
-            body = msg.get_payload(decode=True).decode(charset, errors="replace")
+            raw = msg.get_payload(decode=True).decode(charset, errors="replace")
+            if msg.get_content_type() == "text/html":
+                html = raw
+            else:
+                plain = raw
 
+        body = plain if plain.strip() else _html_to_text(html)
         return subject_str, body
 
 
