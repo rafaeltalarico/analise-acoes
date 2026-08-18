@@ -682,7 +682,7 @@ def _parse_stock_news(body: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 _tg_app: Optional[Application] = None
-_MAIN_MENU_TEXT = "🤖 <b>Bot de Análise de Ações</b>\n\nEscolha uma opção:"
+_MAIN_MENU_TEXT = "🤖 <b>Bem-vindo ao Radar de Ativos</b>\n\nEscolha uma opção:"
 _MAX_MSG = 4096
 
 
