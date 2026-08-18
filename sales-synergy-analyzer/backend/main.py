@@ -930,9 +930,10 @@ async def lifespan(app: FastAPI):
         await _tg_app.initialize()
         webhook_url = os.getenv("TELEGRAM_WEBHOOK_URL", "").rstrip("/")
         if webhook_url:
+            _secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip() or None
             await _tg_app.bot.set_webhook(
                 url=f"{webhook_url}/webhook/telegram",
-                secret_token=os.getenv("TELEGRAM_WEBHOOK_SECRET", "") or None,
+                secret_token=_secret,
             )
             print(f"[telegram] Webhook configurado: {webhook_url}/webhook/telegram")
         await _tg_app.start()
