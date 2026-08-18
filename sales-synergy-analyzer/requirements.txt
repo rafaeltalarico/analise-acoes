@@ -1,11 +1,9 @@
 fastapi
-uvicorn
+uvicorn[standard]
 yfinance>=1.0
 pandas
-openai
 httpx
 python-dotenv
-beautifulsoup4
-lxml
 pydantic
+python-telegram-bot==20.7
 anthropic

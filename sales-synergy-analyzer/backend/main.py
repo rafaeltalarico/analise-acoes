@@ -5,12 +5,24 @@ import os
 import re
 import time
 import httpx
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ParseMode
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 load_dotenv()
 
@@ -25,18 +37,7 @@ AV_BASE = "https://www.alphavantage.co/query"
 
 from services.snowflake_service import get_snowflake_analysis, get_peers, get_fallback_peers
 
-app = FastAPI(title="Stock Analysis API - Mobile", version="3.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 STEP_TIMEOUT = 30
-
 
 SECTOR_NAMES = [
     "Technology", "Healthcare", "Financial Services",
@@ -160,7 +161,6 @@ def _fetch_analysts(price: Optional[float], info: dict, stock=None) -> dict:
 
 
 def _get_close_df(data: pd.DataFrame) -> pd.DataFrame:
-    """Extract Close prices safely across yfinance column structures."""
     if data.empty:
         return pd.DataFrame()
     if isinstance(data.columns, pd.MultiIndex):
@@ -185,7 +185,6 @@ def _score_bar(score: int, max_score: int, width: int = 10) -> str:
 
 
 def _to_float_safe(value) -> Optional[float]:
-    """Converte com segurança valores da API para float."""
     if value in (None, "None", ""):
         return None
     try:
@@ -195,7 +194,6 @@ def _to_float_safe(value) -> Optional[float]:
 
 
 def _av_get(function: str, symbol: str, api_key: str) -> dict:
-    """Chama um endpoint da Alpha Vantage e retorna o JSON validado."""
     params: dict = {"function": function, "apikey": api_key}
     if symbol:
         params["symbol"] = symbol
@@ -211,12 +209,6 @@ def _av_get(function: str, symbol: str, api_key: str) -> dict:
 
 
 def _fetch_earnings_history(stock: yf.Ticker) -> list:
-    """Retorna até 6 trimestres passados de LPA e Receita (real vs estimativa).
-
-    Com ALPHA_VANTAGE_API_KEY: usa AV EARNINGS + AV EARNINGS_ESTIMATES + yfinance
-    para receita real. Resultados cacheados por 24h para não estourar o limite
-    de 25 req/dia do plano gratuito. Sem chave: fallback para yfinance puro.
-    """
     ticker = stock.ticker.upper()
     api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
 
@@ -233,13 +225,11 @@ def _fetch_earnings_history(stock: yf.Ticker) -> list:
 
 
 def _fetch_via_alpha_vantage(stock: yf.Ticker, ticker: str, api_key: str) -> list:
-    """LPA via AV EARNINGS, receita real via yfinance, estimativa de receita via AV EARNINGS_ESTIMATES."""
     try:
         av_earnings = _av_get("EARNINGS", ticker, api_key)
-        time.sleep(1.1)  # respeita limite de 1 req/seg
+        time.sleep(1.1)
         av_estimates = _av_get("EARNINGS_ESTIMATES", ticker, api_key)
 
-        # Receita real: yfinance quarterly_income_stmt (evita AV INCOME_STATEMENT)
         rev_actuals: dict = {}
         try:
             qi = stock.quarterly_income_stmt
@@ -253,7 +243,6 @@ def _fetch_via_alpha_vantage(stock: yf.Ticker, ticker: str, api_key: str) -> lis
         except Exception:
             pass
 
-        # Estimativas de receita: AV EARNINGS_ESTIMATES (tem dados históricos)
         rev_estimates: dict = {}
         for est in av_estimates.get("estimates", []):
             if est.get("horizon") != "fiscal quarter":
@@ -267,7 +256,7 @@ def _fetch_via_alpha_vantage(stock: yf.Ticker, ticker: str, api_key: str) -> lis
         for entry in av_earnings.get("quarterlyEarnings", []):
             reported_date = entry.get("reportedDate", "")
             if not reported_date or reported_date > today:
-                continue  # ainda não reportado
+                continue
 
             lpa_act = _to_float_safe(entry.get("reportedEPS"))
             if lpa_act is None:
@@ -314,7 +303,6 @@ def _fetch_via_alpha_vantage(stock: yf.Ticker, ticker: str, api_key: str) -> lis
 
 
 def _fetch_via_yfinance(stock: yf.Ticker) -> list:
-    """Fallback: LPA e receita (quando disponível) via yfinance earnings_dates."""
     try:
         df = stock.earnings_dates
         if df is None or df.empty or "Reported EPS" not in df.columns:
@@ -366,7 +354,6 @@ def _fetch_via_yfinance(stock: yf.Ticker) -> list:
 
 
 def _fmt_rev(value) -> str:
-    """Formata receita como string curta (1 decimal): $85.8B, $1.2T, $320.5M."""
     if value is None:
         return "—"
     abs_v = abs(value)
@@ -524,6 +511,479 @@ def format_telegram_analysis(
 
 
 # ---------------------------------------------------------------------------
+# Market data helpers
+# ---------------------------------------------------------------------------
+
+def _yf_screen_movers(mover_type: str, limit: int) -> list:
+    from yfinance.screener.screener import screen
+    screener_id = "day_gainers" if mover_type == "gainers" else "day_losers"
+    data   = screen(screener_id, count=max(limit * 4, 25))
+    quotes = data.get("quotes", [])
+
+    results = []
+    for q in quotes:
+        symbol = q.get("symbol", "")
+        price  = _to_float_safe(q.get("regularMarketPrice"))
+
+        if symbol.endswith(("W", "U")) or "." in symbol:
+            continue
+        if price is None or price < 5.0:
+            continue
+
+        change     = _to_float_safe(q.get("regularMarketChange"))
+        change_pct = _to_float_safe(q.get("regularMarketChangePercent"))
+        results.append({
+            "ticker":     symbol,
+            "price":      round(price, 2),
+            "change":     round(change, 2) if change is not None else None,
+            "change_pct": round(change_pct, 2) if change_pct is not None else None,
+        })
+
+        if len(results) == limit:
+            break
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Gmail / GuruFocus helpers
+# ---------------------------------------------------------------------------
+
+def _fix_encoding(text: str) -> str:
+    try:
+        return text.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
+def _html_to_text(html: str) -> str:
+    from html.parser import HTMLParser
+
+    class _Extractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.parts: list[str] = []
+            self._skip = False
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("script", "style"):
+                self._skip = True
+            if tag in ("p", "br", "li", "div", "tr"):
+                self.parts.append("\n")
+
+        def handle_endtag(self, tag):
+            if tag in ("script", "style"):
+                self._skip = False
+
+        def handle_data(self, data):
+            if not self._skip:
+                self.parts.append(data)
+
+    extractor = _Extractor()
+    extractor.feed(html)
+    return "".join(extractor.parts)
+
+
+def _fetch_gurufocus_body() -> tuple[str, str]:
+    gmail_user = os.getenv("GMAIL_USER", "")
+    gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "")
+    if not gmail_user or not gmail_pass:
+        raise RuntimeError("GMAIL_USER ou GMAIL_APP_PASSWORD não configurados.")
+
+    with imaplib.IMAP4_SSL("imap.gmail.com") as mail:
+        mail.login(gmail_user, gmail_pass)
+        mail.select("inbox")
+
+        _, d1 = mail.search(None, 'FROM "gurufocus@gurufocus.com" SUBJECT "First Look"')
+        _, d2 = mail.search(None, 'FROM "gurufocus@gurufocus.com" SUBJECT "Market Today"')
+        ids1 = d1[0].split() if d1[0] else []
+        ids2 = d2[0].split() if d2[0] else []
+        ids = sorted(ids1 + ids2, key=int)
+
+        if not ids:
+            raise RuntimeError("Nenhum email 'First Look' ou 'Market Today' do GuruFocus encontrado.")
+
+        _, msg_data = mail.fetch(ids[-1], "(RFC822)")
+        msg = email_lib.message_from_bytes(msg_data[0][1])
+
+        subject_parts = email_lib.header.decode_header(msg["Subject"])[0]
+        subject_str = (
+            subject_parts[0].decode(subject_parts[1] or "utf-8")
+            if isinstance(subject_parts[0], bytes)
+            else subject_parts[0]
+        )
+        subject_str = _fix_encoding(subject_str)
+
+        plain = html = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                ct = part.get_content_type()
+                charset = part.get_content_charset() or "utf-8"
+                if ct == "text/plain" and not plain:
+                    plain = part.get_payload(decode=True).decode(charset, errors="replace")
+                elif ct == "text/html" and not html:
+                    html = part.get_payload(decode=True).decode(charset, errors="replace")
+        else:
+            charset = msg.get_content_charset() or "utf-8"
+            raw = msg.get_payload(decode=True).decode(charset, errors="replace")
+            if msg.get_content_type() == "text/html":
+                html = raw
+            else:
+                plain = raw
+
+        body = plain if plain.strip() else _html_to_text(html)
+        return subject_str, body
+
+
+def _parse_stock_news(body: str) -> list[str]:
+    m = re.search(r"Stock News\s*\n", body)
+    if not m:
+        return []
+
+    after = body[m.end():]
+    items = []
+
+    if re.search(r"^\*\s+\w", after, re.MULTILINE):
+        for line in after.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if not line.startswith("*") and re.match(r"^[A-Z][A-Za-z\s]{2,35}$", line):
+                break
+            if not line.startswith("*"):
+                continue
+            line = line[1:].strip()
+            line = re.sub(r"\s*Source:\s*\[[^\]]+\]\([^)]+\)\.?\s*$", "", line)
+            line = re.sub(r"\[([A-Z]{1,5})\]\([^)]+\)", r"\1", line)
+            line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
+            line = _fix_encoding(line).strip().rstrip(".")
+            if line:
+                items.append(line)
+        return items
+
+    for line in after.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if len(line) < 45 and ": " not in line and re.match(r"^[A-Z][A-Za-z\s]+$", line):
+            break
+        if ": " not in line:
+            continue
+        line = re.sub(r"\s*Source:\s*[^.]+\.\s*$", "", line)
+        line = _fix_encoding(line).strip().rstrip(".")
+        if len(line) > 20:
+            items.append(line)
+
+    return items
+
+
+# ---------------------------------------------------------------------------
+# Telegram bot handlers
+# ---------------------------------------------------------------------------
+
+_tg_app: Optional[Application] = None
+_MAIN_MENU_TEXT = "🤖 <b>Bot de Análise de Ações</b>\n\nEscolha uma opção:"
+_MAX_MSG = 4096
+
+
+def _main_menu_markup() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📈 Analisar Ação", callback_data="ask_ticker")],
+        [
+            InlineKeyboardButton("🔥 Maiores Altas", callback_data="get_gainers"),
+            InlineKeyboardButton("📉 Maiores Baixas", callback_data="get_losers"),
+        ],
+        [InlineKeyboardButton("📰 Resumo do Dia", callback_data="get_summary")],
+    ])
+
+
+def _back_markup() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 Menu Principal", callback_data="send_menu")],
+    ])
+
+
+def _analysis_markup() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔍 Nova Análise", callback_data="ask_ticker")],
+        [InlineKeyboardButton("🔙 Menu Principal", callback_data="send_menu")],
+    ])
+
+
+def _truncate(text: str, max_len: int = _MAX_MSG) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[:max_len - 40] + "\n\n<i>[Mensagem truncada]</i>"
+
+
+async def _show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    markup = _main_menu_markup()
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(
+            _MAIN_MENU_TEXT, reply_markup=markup, parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            _MAIN_MENU_TEXT, reply_markup=markup, parse_mode=ParseMode.HTML
+        )
+
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _show_main_menu(update, context)
+
+
+async def cb_send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _show_main_menu(update, context)
+
+
+async def cb_ask_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    context.user_data["awaiting_ticker"] = True
+    await update.callback_query.edit_message_text(
+        "Digite o ticker da ação que deseja analisar:\n<i>Exemplos: AAPL, MSFT, NVDA, KLAC</i>",
+        reply_markup=_back_markup(),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def _build_movers_text(mover_type: str) -> str:
+    results = await asyncio.to_thread(_yf_screen_movers, mover_type, 5)
+    if not results:
+        return "📊 Sem dados disponíveis no momento."
+    header = "🔥 <b>MAIORES ALTAS DO DIA</b>" if mover_type == "gainers" else "📉 <b>MAIORES BAIXAS DO DIA</b>"
+    lines = [header, ""]
+    for r in results:
+        pct = r.get("change_pct") or 0
+        sign = "+" if pct >= 0 else ""
+        lines.append(f"<b>{r['ticker']}</b>  ${r['price']:.2f}  {sign}{pct:.2f}%")
+    return "\n".join(lines)
+
+
+async def cb_get_gainers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer("Buscando maiores altas...")
+    try:
+        text = await _build_movers_text("gainers")
+    except Exception as e:
+        text = f"❌ Erro ao buscar dados: {e}"
+    await update.callback_query.edit_message_text(
+        text, reply_markup=_back_markup(), parse_mode=ParseMode.HTML
+    )
+
+
+async def cb_get_losers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer("Buscando maiores baixas...")
+    try:
+        text = await _build_movers_text("losers")
+    except Exception as e:
+        text = f"❌ Erro ao buscar dados: {e}"
+    await update.callback_query.edit_message_text(
+        text, reply_markup=_back_markup(), parse_mode=ParseMode.HTML
+    )
+
+
+async def cb_get_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer("Buscando resumo...")
+    try:
+        subject, body = await asyncio.to_thread(_fetch_gurufocus_body)
+        news = _parse_stock_news(body)
+
+        if "First Look" in subject:
+            header = "🌅 <b>FIRST LOOK — Resumo da Manhã</b>"
+        elif "Market Today" in subject:
+            header = "🌙 <b>MARKET TODAY — Resumo do Dia</b>"
+        else:
+            header = "📰 <b>RESUMO DO DIA</b>"
+
+        if not news:
+            text = "📰 Sem notícias disponíveis no momento."
+        else:
+            items = [
+                f"{i}. {item[:297] + '...' if len(item) > 300 else item}"
+                for i, item in enumerate(news, 1)
+            ]
+            text = f"{header}\n\n" + "\n\n".join(items)
+            if len(text) > _MAX_MSG:
+                kept = list(items)
+                while len(kept) > 1:
+                    kept.pop()
+                    text = f"{header}\n\n" + "\n\n".join(kept)
+                    if len(text) <= _MAX_MSG:
+                        break
+    except Exception as e:
+        text = f"❌ Erro ao buscar resumo: {e}"
+
+    await update.callback_query.edit_message_text(
+        text, reply_markup=_back_markup(), parse_mode=ParseMode.HTML
+    )
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ticker = update.message.text.strip().upper()
+    if not ticker or len(ticker) > 10 or not re.match(r"^[A-Z0-9.\-]+$", ticker):
+        await update.message.reply_text(
+            "⚠️ Digite um ticker válido (ex: AAPL, MSFT, NVDA).",
+            reply_markup=_back_markup(),
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    context.user_data["awaiting_ticker"] = False
+    wait_msg = await update.message.reply_text(
+        f"🔍 Analisando <b>{ticker}</b>...", parse_mode=ParseMode.HTML
+    )
+
+    try:
+        try:
+            peers = await asyncio.wait_for(get_peers(ticker), timeout=STEP_TIMEOUT)
+        except Exception:
+            peers = []
+
+        try:
+            snowflake_result = await asyncio.wait_for(
+                get_snowflake_analysis(ticker, peers), timeout=STEP_TIMEOUT
+            )
+        except Exception as e:
+            await wait_msg.edit_text(
+                f"❌ Erro na análise de <b>{ticker}</b>: {e}",
+                reply_markup=_back_markup(), parse_mode=ParseMode.HTML,
+            )
+            return
+
+        stock = yf.Ticker(ticker)
+        try:
+            info = stock.info
+            price = _f(info.get("currentPrice") or info.get("regularMarketPrice"))
+
+            if price is None and not (info.get("longName") or info.get("shortName")):
+                await wait_msg.edit_text(
+                    f"❌ <b>Ticker '{ticker}' não encontrado.</b>\n\n"
+                    f"Verifique se o símbolo está correto.\n"
+                    f"<i>Exemplos: AAPL, MSFT, KLAC, NVDA</i>",
+                    reply_markup=_analysis_markup(), parse_mode=ParseMode.HTML,
+                )
+                return
+
+            company_name = info.get("longName") or info.get("shortName", ticker)
+            sector = info.get("sector", "N/A")
+            change_amount = _f(info.get("regularMarketChange"))
+            prev_close_val = _f(info.get("previousClose"))
+            price_data = {
+                "current":    price,
+                "change":     change_amount,
+                "change_pct": (
+                    round(change_amount / prev_close_val * 100, 2)
+                    if change_amount is not None and prev_close_val
+                    else None
+                ),
+                "market_cap": _fmt_large(info.get("marketCap")),
+            }
+            analysts = _fetch_analysts(price, info, stock)
+        except Exception:
+            await wait_msg.edit_text(
+                f"❌ <b>Não foi possível buscar dados para '{ticker}'.</b>\n\n"
+                f"Verifique o símbolo ou tente novamente.\n"
+                f"<i>Exemplos: AAPL, MSFT, KLAC, NVDA</i>",
+                reply_markup=_analysis_markup(), parse_mode=ParseMode.HTML,
+            )
+            return
+
+        try:
+            earnings_history = _fetch_earnings_history(stock)
+        except Exception:
+            earnings_history = []
+
+        text = format_telegram_analysis(
+            ticker, company_name, sector, price_data,
+            snowflake_result, analysts, earnings_history,
+        )
+        await wait_msg.edit_text(
+            _truncate(text),
+            reply_markup=_analysis_markup(),
+            parse_mode=ParseMode.HTML,
+        )
+
+    except Exception as e:
+        await wait_msg.edit_text(
+            f"❌ Erro inesperado: {e}",
+            reply_markup=_back_markup(), parse_mode=ParseMode.HTML,
+        )
+
+
+# ---------------------------------------------------------------------------
+# FastAPI lifespan — bot startup / shutdown
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _tg_app
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if token:
+        _tg_app = Application.builder().token(token).updater(None).build()
+        _tg_app.add_handler(CommandHandler("start", cmd_start))
+        _tg_app.add_handler(CallbackQueryHandler(cb_send_menu,   pattern="^send_menu$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_ask_ticker,  pattern="^ask_ticker$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_get_gainers, pattern="^get_gainers$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_get_losers,  pattern="^get_losers$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_get_summary, pattern="^get_summary$"))
+        _tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+        await _tg_app.initialize()
+        webhook_url = os.getenv("TELEGRAM_WEBHOOK_URL", "").rstrip("/")
+        if webhook_url:
+            await _tg_app.bot.set_webhook(
+                url=f"{webhook_url}/webhook/telegram",
+                secret_token=os.getenv("TELEGRAM_WEBHOOK_SECRET", "") or None,
+            )
+            print(f"[telegram] Webhook configurado: {webhook_url}/webhook/telegram")
+        await _tg_app.start()
+        print("[telegram] Bot iniciado.")
+    else:
+        print("[telegram] TELEGRAM_BOT_TOKEN não configurado — bot desativado.")
+    yield
+    if _tg_app:
+        await _tg_app.stop()
+        await _tg_app.shutdown()
+        print("[telegram] Bot encerrado.")
+
+
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
+
+app = FastAPI(
+    title="Stock Analysis API - Mobile",
+    version="3.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.post("/webhook/telegram")
+async def telegram_webhook(request: Request):
+    """Receives Telegram updates via webhook."""
+    if not _tg_app:
+        raise HTTPException(status_code=503, detail="Telegram bot não configurado.")
+
+    secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+    if secret:
+        header_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if header_secret != secret:
+            raise HTTPException(status_code=403, detail="Token inválido.")
+
+    data = await request.json()
+    update = Update.de_json(data, _tg_app.bot)
+    await _tg_app.process_update(update)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -631,7 +1091,6 @@ async def telegram_analyze(ticker: str):
         info = stock.info
         price = _f(info.get("currentPrice") or info.get("regularMarketPrice"))
 
-        # Ticker inválido: sem preço E sem nome de empresa
         if price is None and not (info.get("longName") or info.get("shortName")):
             error_text = (
                 f"❌ <b>Ticker '{ticker}' não encontrado.</b>\n\n"
@@ -676,41 +1135,8 @@ async def telegram_analyze(ticker: str):
     return {"ticker": ticker, "text": text, "parse_mode": "HTML"}
 
 
-def _yf_screen_movers(mover_type: str, limit: int) -> list:
-    """Busca gainers/losers via yfinance Screener (mesmos dados do Yahoo Finance)."""
-    from yfinance.screener.screener import screen
-    screener_id = "day_gainers" if mover_type == "gainers" else "day_losers"
-    data   = screen(screener_id, count=max(limit * 4, 25))
-    quotes = data.get("quotes", [])
-
-    results = []
-    for q in quotes:
-        symbol = q.get("symbol", "")
-        price  = _to_float_safe(q.get("regularMarketPrice"))
-
-        if symbol.endswith(("W", "U")) or "." in symbol:
-            continue
-        if price is None or price < 5.0:
-            continue
-
-        change     = _to_float_safe(q.get("regularMarketChange"))
-        change_pct = _to_float_safe(q.get("regularMarketChangePercent"))
-        results.append({
-            "ticker":     symbol,
-            "price":      round(price, 2),
-            "change":     round(change, 2) if change is not None else None,
-            "change_pct": round(change_pct, 2) if change_pct is not None else None,
-        })
-
-        if len(results) == limit:
-            break
-
-    return results
-
-
 @app.get("/api/market/movers")
 async def market_movers(type: str = "gainers", limit: int = 5):
-    """Top gainers ou losers via yfinance Screener (dados do Yahoo Finance)."""
     if type not in ("gainers", "losers"):
         raise HTTPException(status_code=400, detail="type deve ser 'gainers' ou 'losers'")
     limit = max(1, min(15, limit))
@@ -723,7 +1149,6 @@ async def market_movers(type: str = "gainers", limit: int = 5):
             "results": results,
             "empty":   len(results) == 0,
         }
-
     except HTTPException:
         raise
     except Exception as e:
@@ -733,13 +1158,11 @@ async def market_movers(type: str = "gainers", limit: int = 5):
 
 @app.get("/api/market/sectors")
 async def market_sectors_list():
-    """Returns the list of available sector names."""
     return {"sectors": SECTOR_NAMES}
 
 
 @app.get("/api/market/sector/{sector_name}")
 async def market_sector_stocks(sector_name: str, limit: int = 10):
-    """Top stocks in a sector sorted by market cap (descending)."""
     normalized = SECTOR_NORMALIZE.get(sector_name.lower(), sector_name)
     tickers = get_fallback_peers(normalized)
     if not tickers:
@@ -777,157 +1200,12 @@ async def market_sector_stocks(sector_name: str, limit: int = 10):
     return {"sector": normalized, "results": top}
 
 
-def _html_to_text(html: str) -> str:
-    """Converte HTML para texto simples usando html.parser da stdlib."""
-    from html.parser import HTMLParser
-
-    class _Extractor(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.parts: list[str] = []
-            self._skip = False
-
-        def handle_starttag(self, tag, attrs):
-            if tag in ("script", "style"):
-                self._skip = True
-            if tag in ("p", "br", "li", "div", "tr"):
-                self.parts.append("\n")
-
-        def handle_endtag(self, tag):
-            if tag in ("script", "style"):
-                self._skip = False
-
-        def handle_data(self, data):
-            if not self._skip:
-                self.parts.append(data)
-
-    extractor = _Extractor()
-    extractor.feed(html)
-    return "".join(extractor.parts)
-
-
-def _fetch_gurufocus_body() -> tuple[str, str]:
-    """Conecta ao Gmail via IMAP e retorna (assunto, corpo) do email First Look ou Market Today mais recente."""
-    gmail_user = os.getenv("GMAIL_USER", "")
-    gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "")
-    if not gmail_user or not gmail_pass:
-        raise RuntimeError("GMAIL_USER ou GMAIL_APP_PASSWORD não configurados.")
-
-    with imaplib.IMAP4_SSL("imap.gmail.com") as mail:
-        mail.login(gmail_user, gmail_pass)
-        mail.select("inbox")
-
-        # Busca emails com "First Look" ou "Market Today" no assunto
-        _, d1 = mail.search(None, 'FROM "gurufocus@gurufocus.com" SUBJECT "First Look"')
-        _, d2 = mail.search(None, 'FROM "gurufocus@gurufocus.com" SUBJECT "Market Today"')
-        ids1 = d1[0].split() if d1[0] else []
-        ids2 = d2[0].split() if d2[0] else []
-        ids = sorted(ids1 + ids2, key=int)
-
-        if not ids:
-            raise RuntimeError("Nenhum email 'First Look' ou 'Market Today' do GuruFocus encontrado.")
-
-        # Pega o mais recente
-        _, msg_data = mail.fetch(ids[-1], "(RFC822)")
-        msg = email_lib.message_from_bytes(msg_data[0][1])
-
-        # Assunto
-        subject_parts = email_lib.header.decode_header(msg["Subject"])[0]
-        subject_str = (
-            subject_parts[0].decode(subject_parts[1] or "utf-8")
-            if isinstance(subject_parts[0], bytes)
-            else subject_parts[0]
-        )
-        subject_str = _fix_encoding(subject_str)
-
-        # Corpo: prefere text/plain; fallback para HTML convertido
-        plain = html = ""
-        if msg.is_multipart():
-            for part in msg.walk():
-                ct = part.get_content_type()
-                charset = part.get_content_charset() or "utf-8"
-                if ct == "text/plain" and not plain:
-                    plain = part.get_payload(decode=True).decode(charset, errors="replace")
-                elif ct == "text/html" and not html:
-                    html = part.get_payload(decode=True).decode(charset, errors="replace")
-        else:
-            charset = msg.get_content_charset() or "utf-8"
-            raw = msg.get_payload(decode=True).decode(charset, errors="replace")
-            if msg.get_content_type() == "text/html":
-                html = raw
-            else:
-                plain = raw
-
-        body = plain if plain.strip() else _html_to_text(html)
-        return subject_str, body
-
-
-def _fix_encoding(text: str) -> str:
-    """Corrige encoding quebrado (latin-1 mal interpretado como UTF-8)."""
-    try:
-        return text.encode("latin-1").decode("utf-8")
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        return text
-
-
-def _parse_stock_news(body: str) -> list[str]:
-    """Extrai Stock News do corpo do email GuruFocus (text/plain ou HTML convertido)."""
-    m = re.search(r"Stock News\s*\n", body)
-    if not m:
-        return []
-
-    after = body[m.end():]
-    items = []
-
-    # --- Formato markdown (text/plain): linhas com "* Título: Desc. Source: [X](url)" ---
-    if re.search(r"^\*\s+\w", after, re.MULTILINE):
-        for line in after.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            # Para na próxima seção (linha curta, sem *)
-            if not line.startswith("*") and re.match(r"^[A-Z][A-Za-z\s]{2,35}$", line):
-                break
-            if not line.startswith("*"):
-                continue
-            line = line[1:].strip()
-            line = re.sub(r"\s*Source:\s*\[[^\]]+\]\([^)]+\)\.?\s*$", "", line)
-            line = re.sub(r"\[([A-Z]{1,5})\]\([^)]+\)", r"\1", line)
-            line = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
-            line = _fix_encoding(line).strip().rstrip(".")
-            if line:
-                items.append(line)
-        return items
-
-    # --- Formato HTML convertido: linhas planas "Título: Descrição. Source: Nome." ---
-    for line in after.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        # Para na próxima seção (linha curta, sem dois-pontos, título capitalizado)
-        if len(line) < 45 and ": " not in line and re.match(r"^[A-Z][A-Za-z\s]+$", line):
-            break
-        # Aceita apenas linhas com padrão "Algo: descrição"
-        if ": " not in line:
-            continue
-        # Remove "Source: Nome." no final
-        line = re.sub(r"\s*Source:\s*[^.]+\.\s*$", "", line)
-        line = _fix_encoding(line).strip().rstrip(".")
-        if len(line) > 20:
-            items.append(line)
-
-    return items
-
-
-
 @app.get("/api/market/summary")
 async def market_summary():
-    """Retorna as Stock News do email mais recente do GuruFocus (First Look ou Market Today)."""
     try:
         subject, body = await asyncio.to_thread(_fetch_gurufocus_body)
         news = _parse_stock_news(body)
 
-        # Detecta o tipo do email pelo assunto
         if "First Look" in subject:
             email_type = "First Look"
         elif "Market Today" in subject:
