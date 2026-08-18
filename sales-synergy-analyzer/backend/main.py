@@ -693,6 +693,7 @@ def _main_menu_markup() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🔥 Maiores Altas", callback_data="get_gainers"),
             InlineKeyboardButton("📉 Maiores Baixas", callback_data="get_losers"),
         ],
+        [InlineKeyboardButton("🏢 Buscar por Setor", callback_data="get_sectors")],
         [InlineKeyboardButton("📰 Resumo do Dia", callback_data="get_summary")],
     ])
 
@@ -758,6 +759,79 @@ async def _build_movers_text(mover_type: str) -> str:
         sign = "+" if pct >= 0 else ""
         lines.append(f"<b>{r['ticker']}</b>  ${r['price']:.2f}  {sign}{pct:.2f}%")
     return "\n".join(lines)
+
+
+async def cb_get_sectors(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    keyboard = []
+    row = []
+    for sector in SECTOR_NAMES:
+        row.append(InlineKeyboardButton(sector, callback_data=f"sector:{sector}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("🔙 Menu Principal", callback_data="send_menu")])
+    await update.callback_query.edit_message_text(
+        "🏢 <b>Selecione um setor:</b>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def cb_get_sector_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sector = update.callback_query.data.split(":", 1)[1]
+    await update.callback_query.answer(f"Buscando {sector}...")
+    try:
+        normalized = SECTOR_NORMALIZE.get(sector.lower(), sector)
+        tickers = get_fallback_peers(normalized)
+        if not tickers:
+            text = f"❌ Setor '{sector}' não encontrado."
+        else:
+            async def _fetch(sym: str):
+                def _get():
+                    fi = yf.Ticker(sym).fast_info
+                    return (
+                        getattr(fi, "market_cap", None),
+                        getattr(fi, "last_price", None),
+                        getattr(fi, "previous_close", None),
+                    )
+                try:
+                    cap, price, prev = await asyncio.to_thread(_get)
+                    chg = round((price - prev) / prev * 100, 2) if price and prev and prev > 0 else None
+                    return {"ticker": sym, "price": price, "change_pct": chg, "market_cap": float(cap) if cap else 0}
+                except Exception:
+                    return None
+
+            raw = await asyncio.gather(*[_fetch(sym) for sym in tickers[:12]])
+            valid = [r for r in raw if r and r.get("market_cap", 0) > 0]
+            top = sorted(valid, key=lambda x: x["market_cap"], reverse=True)[:10]
+
+            if not top:
+                text = f"📊 Sem dados disponíveis para {sector}."
+            else:
+                lines = [f"🏢 <b>{sector}</b>", ""]
+                for r in top:
+                    price = r.get("price")
+                    chg = r.get("change_pct")
+                    price_str = f"${price:.2f}" if price else "—"
+                    chg_str = ""
+                    if chg is not None:
+                        sign = "+" if chg >= 0 else ""
+                        chg_str = f"  {sign}{chg:.2f}%"
+                    lines.append(f"<b>{r['ticker']}</b>  {price_str}{chg_str}")
+                text = "\n".join(lines)
+    except Exception as e:
+        text = f"❌ Erro ao buscar setor: {e}"
+
+    back_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 Setores", callback_data="get_sectors")],
+        [InlineKeyboardButton("🏠 Menu Principal", callback_data="send_menu")],
+    ])
+    await update.callback_query.edit_message_text(
+        text, reply_markup=back_markup, parse_mode=ParseMode.HTML
+    )
 
 
 async def cb_get_gainers(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -921,11 +995,13 @@ async def lifespan(app: FastAPI):
     if token:
         _tg_app = Application.builder().token(token).updater(None).build()
         _tg_app.add_handler(CommandHandler("start", cmd_start))
-        _tg_app.add_handler(CallbackQueryHandler(cb_send_menu,   pattern="^send_menu$"))
-        _tg_app.add_handler(CallbackQueryHandler(cb_ask_ticker,  pattern="^ask_ticker$"))
-        _tg_app.add_handler(CallbackQueryHandler(cb_get_gainers, pattern="^get_gainers$"))
-        _tg_app.add_handler(CallbackQueryHandler(cb_get_losers,  pattern="^get_losers$"))
-        _tg_app.add_handler(CallbackQueryHandler(cb_get_summary, pattern="^get_summary$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_send_menu,        pattern="^send_menu$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_ask_ticker,       pattern="^ask_ticker$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_get_gainers,      pattern="^get_gainers$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_get_losers,       pattern="^get_losers$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_get_sectors,      pattern="^get_sectors$"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_get_sector_stocks, pattern="^sector:"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_get_summary,      pattern="^get_summary$"))
         _tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
         await _tg_app.initialize()
         webhook_url = os.getenv("TELEGRAM_WEBHOOK_URL", "").rstrip("/")
