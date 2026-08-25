@@ -786,10 +786,20 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"[stats] chamado por chat_id={update.effective_chat.id}", flush=True)
     owner_id = os.getenv("OWNER_CHAT_ID", "")
+    print(f"[stats] owner_id={repr(owner_id)}", flush=True)
     if owner_id and str(update.effective_chat.id) != owner_id:
+        print("[stats] não autorizado, ignorando", flush=True)
         return
-    await update.message.reply_text(_stats_text(), parse_mode=ParseMode.HTML)
+    try:
+        text = _stats_text()
+        print(f"[stats] texto gerado ok, enviando...", flush=True)
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        print("[stats] enviado com sucesso", flush=True)
+    except Exception as e:
+        print(f"[stats] ERRO ao enviar: {e}", flush=True)
+        await update.message.reply_text(f"Erro: {e}")
 
 
 async def cb_send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
