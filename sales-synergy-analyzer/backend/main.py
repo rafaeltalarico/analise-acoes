@@ -974,26 +974,44 @@ async def cb_get_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
             header = "📰 <b>RESUMO DO DIA</b>"
 
         if not news:
-            text = "📰 Sem notícias disponíveis no momento."
-        else:
-            items = [
-                f"{i}. {item[:297] + '...' if len(item) > 300 else item}"
-                for i, item in enumerate(news, 1)
-            ]
-            text = f"{header}\n\n" + "\n\n".join(items)
-            if len(text) > _MAX_MSG:
-                kept = list(items)
-                while len(kept) > 1:
-                    kept.pop()
-                    text = f"{header}\n\n" + "\n\n".join(kept)
-                    if len(text) <= _MAX_MSG:
-                        break
-    except Exception as e:
-        text = f"❌ Erro ao buscar resumo: {e}"
+            await update.callback_query.edit_message_text(
+                "📰 Sem notícias disponíveis no momento.",
+                reply_markup=_back_markup(), parse_mode=ParseMode.HTML,
+            )
+            return
 
-    await update.callback_query.edit_message_text(
-        text, reply_markup=_back_markup(), parse_mode=ParseMode.HTML
-    )
+        items = [f"{i}. {item}" for i, item in enumerate(news, 1)]
+
+        # Split into chunks that fit within Telegram's message limit
+        chunks: list[str] = []
+        current: list[str] = []
+        for item in items:
+            candidate = f"{header}\n\n" + "\n\n".join(current + [item])
+            if len(candidate) > _MAX_MSG and current:
+                chunks.append(f"{header}\n\n" + "\n\n".join(current))
+                current = [item]
+            else:
+                current.append(item)
+        if current:
+            chunks.append(f"{header}\n\n" + "\n\n".join(current))
+
+        # First chunk replaces the "buscando" message; extras are sent as follow-ups
+        await update.callback_query.edit_message_text(
+            chunks[0], parse_mode=ParseMode.HTML,
+            reply_markup=None if len(chunks) > 1 else _back_markup(),
+        )
+        for chunk in chunks[1:-1]:
+            await update.callback_query.message.reply_text(chunk, parse_mode=ParseMode.HTML)
+        if len(chunks) > 1:
+            await update.callback_query.message.reply_text(
+                chunks[-1], reply_markup=_back_markup(), parse_mode=ParseMode.HTML,
+            )
+
+    except Exception as e:
+        await update.callback_query.edit_message_text(
+            f"❌ Erro ao buscar resumo: {e}",
+            reply_markup=_back_markup(), parse_mode=ParseMode.HTML,
+        )
 
 
 async def _do_analysis(ticker: str, wait_msg) -> None:
