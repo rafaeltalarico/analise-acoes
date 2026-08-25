@@ -36,6 +36,7 @@ _EARNINGS_CACHE_TTL = 86400  # segundos
 AV_BASE = "https://www.alphavantage.co/query"
 
 from services.snowflake_service import get_snowflake_analysis, get_peers, get_fallback_peers
+from services.claude_service import translate_news_items
 
 STEP_TIMEOUT = 30
 
@@ -963,6 +964,7 @@ async def cb_get_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         subject, body = await asyncio.to_thread(_fetch_gurufocus_body)
         news = _parse_stock_news(body)
+        news = await translate_news_items(news)
 
         if "First Look" in subject:
             header = "🌅 <b>FIRST LOOK — Resumo da Manhã</b>"

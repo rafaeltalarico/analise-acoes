@@ -291,6 +291,50 @@ Dados da empresa (setor: {sector_str}):
     return None
 
 
+async def translate_news_items(items: list) -> list:
+    """Translates English financial news items to Brazilian Portuguese. Falls back to originals on error."""
+    client = get_client()
+    if not client or not items:
+        return items
+
+    numbered = "\n".join(f"{i + 1}. {item}" for i, item in enumerate(items))
+    prompt = (
+        "Traduza as notícias financeiras abaixo do inglês para o português brasileiro.\n"
+        "Mantenha termos técnicos consagrados (EPS, guidance, rally, selloff, bull, bear) sem traduzir.\n"
+        "Retorne APENAS a lista numerada traduzida, sem texto adicional.\n\n"
+        f"{numbered}"
+    )
+
+    try:
+        loop = asyncio.get_event_loop()
+
+        def _call():
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.content[0].text
+
+        raw = await loop.run_in_executor(None, _call)
+
+        translated = []
+        for line in raw.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            m = re.match(r"^\d+[.)]\s*(.+)", line)
+            if m:
+                translated.append(m.group(1))
+
+        if len(translated) == len(items):
+            return translated
+    except Exception as e:
+        print(f"Erro ao traduzir notícias: {e}")
+
+    return items
+
+
 async def _noop() -> None:
     return None
 
