@@ -5,6 +5,8 @@ services:
     env_file: .env
     expose:
       - "8000"
+    volumes:
+      - ./logs:/app/logs
 
   nginx:
     image: nginx:alpine

@@ -685,6 +685,56 @@ _tg_app: Optional[Application] = None
 _MAIN_MENU_TEXT = "🤖 <b>Bem-vindo ao Radar de Ativos</b>\n\nEscolha uma opção:"
 _MAX_MSG = 4096
 
+_LOG_DIR   = "/app/logs"
+_LOG_FILE  = "/app/logs/interactions.log"
+_USERS_FILE = "/app/logs/users.txt"
+
+
+def _log(chat_id: int, action: str):
+    try:
+        os.makedirs(_LOG_DIR, exist_ok=True)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        known = set()
+        if os.path.exists(_USERS_FILE):
+            with open(_USERS_FILE) as f:
+                known = {l.strip() for l in f if l.strip()}
+        is_new = str(chat_id) not in known
+        if is_new:
+            with open(_USERS_FILE, "a") as f:
+                f.write(f"{chat_id}\n")
+        tag = "NOVO" if is_new else "----"
+        with open(_LOG_FILE, "a") as f:
+            f.write(f"{now} | {tag} | {chat_id} | {action}\n")
+    except Exception:
+        pass
+
+
+def _stats_text() -> str:
+    try:
+        os.makedirs(_LOG_DIR, exist_ok=True)
+        users = 0
+        if os.path.exists(_USERS_FILE):
+            with open(_USERS_FILE) as f:
+                users = sum(1 for l in f if l.strip())
+        interactions = 0
+        recent = []
+        if os.path.exists(_LOG_FILE):
+            with open(_LOG_FILE) as f:
+                lines = [l.strip() for l in f if l.strip()]
+            interactions = len(lines)
+            recent = lines[-10:]
+        lines_out = [
+            "📊 <b>Estatísticas do Bot</b>",
+            "",
+            f"👥 Usuários únicos: <b>{users}</b>",
+            f"🔢 Total de interações: <b>{interactions}</b>",
+            "",
+            "<b>Últimas 10 interações:</b>",
+        ] + [f"<code>{l}</code>" for l in recent]
+        return "\n".join(lines_out)
+    except Exception as e:
+        return f"Erro ao ler estatísticas: {e}"
+
 
 def _main_menu_markup() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -731,10 +781,19 @@ async def _show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _log(update.effective_chat.id, "/start")
     await _show_main_menu(update, context)
 
 
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    owner_id = os.getenv("OWNER_CHAT_ID", "")
+    if owner_id and str(update.effective_chat.id) != owner_id:
+        return
+    await update.message.reply_text(_stats_text(), parse_mode=ParseMode.HTML)
+
+
 async def cb_send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _log(update.effective_chat.id, "menu_principal")
     await _show_main_menu(update, context)
 
 
@@ -762,6 +821,7 @@ async def _build_movers_text(mover_type: str) -> str:
 
 
 async def cb_get_sectors(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _log(update.effective_chat.id, "buscar_setor")
     await update.callback_query.answer()
     keyboard = []
     row = []
@@ -835,6 +895,7 @@ async def cb_get_sector_stocks(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def cb_get_gainers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _log(update.effective_chat.id, "maiores_altas")
     await update.callback_query.answer("Buscando maiores altas...")
     try:
         text = await _build_movers_text("gainers")
@@ -846,6 +907,7 @@ async def cb_get_gainers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cb_get_losers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _log(update.effective_chat.id, "maiores_baixas")
     await update.callback_query.answer("Buscando maiores baixas...")
     try:
         text = await _build_movers_text("losers")
@@ -857,6 +919,7 @@ async def cb_get_losers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cb_get_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _log(update.effective_chat.id, "resumo_dia")
     await update.callback_query.answer("Buscando resumo...")
     try:
         subject, body = await asyncio.to_thread(_fetch_gurufocus_body)
@@ -903,6 +966,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     context.user_data["awaiting_ticker"] = False
+    _log(update.effective_chat.id, f"analisar_acao:{ticker}")
     wait_msg = await update.message.reply_text(
         f"🔍 Analisando <b>{ticker}</b>...", parse_mode=ParseMode.HTML
     )
@@ -995,6 +1059,7 @@ async def lifespan(app: FastAPI):
     if token:
         _tg_app = Application.builder().token(token).updater(None).build()
         _tg_app.add_handler(CommandHandler("start", cmd_start))
+        _tg_app.add_handler(CommandHandler("stats", cmd_stats))
         _tg_app.add_handler(CallbackQueryHandler(cb_send_menu,        pattern="^send_menu$"))
         _tg_app.add_handler(CallbackQueryHandler(cb_ask_ticker,       pattern="^ask_ticker$"))
         _tg_app.add_handler(CallbackQueryHandler(cb_get_gainers,      pattern="^get_gainers$"))
