@@ -786,20 +786,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"[stats] chamado por chat_id={update.effective_chat.id}", flush=True)
     owner_id = os.getenv("OWNER_CHAT_ID", "")
-    print(f"[stats] owner_id={repr(owner_id)}", flush=True)
     if owner_id and str(update.effective_chat.id) != owner_id:
-        print("[stats] não autorizado, ignorando", flush=True)
         return
-    try:
-        text = _stats_text()
-        print(f"[stats] texto gerado ok, enviando...", flush=True)
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-        print("[stats] enviado com sucesso", flush=True)
-    except Exception as e:
-        print(f"[stats] ERRO ao enviar: {e}", flush=True)
-        await update.message.reply_text(f"Erro: {e}")
+    await update.message.reply_text(_stats_text(), parse_mode=ParseMode.HTML)
 
 
 async def cb_send_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -815,6 +805,28 @@ async def cb_ask_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=_back_markup(),
         parse_mode=ParseMode.HTML,
     )
+
+
+async def _build_movers_keyboard(mover_type: str):
+    """Returns (header_text, InlineKeyboardMarkup) with one button per stock."""
+    results = await asyncio.to_thread(_yf_screen_movers, mover_type, 7)
+    if not results:
+        return "📊 Sem dados disponíveis no momento.", InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Menu Principal", callback_data="send_menu")]
+        ])
+    header = (
+        "🔥 <b>MAIORES ALTAS DO DIA</b>\n\n<i>Clique em um ativo para analisar:</i>"
+        if mover_type == "gainers"
+        else "📉 <b>MAIORES BAIXAS DO DIA</b>\n\n<i>Clique em um ativo para analisar:</i>"
+    )
+    keyboard = []
+    for r in results:
+        pct = r.get("change_pct") or 0
+        sign = "+" if pct >= 0 else ""
+        label = f"{r['ticker']}  ${r['price']:.2f}  {sign}{pct:.2f}%"
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"analyze:{r['ticker']}")])
+    keyboard.append([InlineKeyboardButton("🔙 Menu Principal", callback_data="send_menu")])
+    return header, InlineKeyboardMarkup(keyboard)
 
 
 async def _build_movers_text(mover_type: str) -> str:
@@ -853,66 +865,82 @@ async def cb_get_sectors(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cb_get_sector_stocks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sector = update.callback_query.data.split(":", 1)[1]
     await update.callback_query.answer(f"Buscando {sector}...")
-    try:
-        normalized = SECTOR_NORMALIZE.get(sector.lower(), sector)
-        tickers = get_fallback_peers(normalized)
-        if not tickers:
-            text = f"❌ Setor '{sector}' não encontrado."
-        else:
-            async def _fetch(sym: str):
-                def _get():
-                    fi = yf.Ticker(sym).fast_info
-                    return (
-                        getattr(fi, "market_cap", None),
-                        getattr(fi, "last_price", None),
-                        getattr(fi, "previous_close", None),
-                    )
-                try:
-                    cap, price, prev = await asyncio.to_thread(_get)
-                    chg = round((price - prev) / prev * 100, 2) if price and prev and prev > 0 else None
-                    return {"ticker": sym, "price": price, "change_pct": chg, "market_cap": float(cap) if cap else 0}
-                except Exception:
-                    return None
-
-            raw = await asyncio.gather(*[_fetch(sym) for sym in tickers[:12]])
-            valid = [r for r in raw if r and r.get("market_cap", 0) > 0]
-            top = sorted(valid, key=lambda x: x["market_cap"], reverse=True)[:10]
-
-            if not top:
-                text = f"📊 Sem dados disponíveis para {sector}."
-            else:
-                lines = [f"🏢 <b>{sector}</b>", ""]
-                for r in top:
-                    price = r.get("price")
-                    chg = r.get("change_pct")
-                    price_str = f"${price:.2f}" if price else "—"
-                    chg_str = ""
-                    if chg is not None:
-                        sign = "+" if chg >= 0 else ""
-                        chg_str = f"  {sign}{chg:.2f}%"
-                    lines.append(f"<b>{r['ticker']}</b>  {price_str}{chg_str}")
-                text = "\n".join(lines)
-    except Exception as e:
-        text = f"❌ Erro ao buscar setor: {e}"
-
     back_markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔙 Setores", callback_data="get_sectors")],
         [InlineKeyboardButton("🏠 Menu Principal", callback_data="send_menu")],
     ])
-    await update.callback_query.edit_message_text(
-        text, reply_markup=back_markup, parse_mode=ParseMode.HTML
-    )
+    try:
+        normalized = SECTOR_NORMALIZE.get(sector.lower(), sector)
+        tickers = get_fallback_peers(normalized)
+        if not tickers:
+            await update.callback_query.edit_message_text(
+                f"❌ Setor '{sector}' não encontrado.",
+                reply_markup=back_markup, parse_mode=ParseMode.HTML,
+            )
+            return
+
+        async def _fetch(sym: str):
+            def _get():
+                fi = yf.Ticker(sym).fast_info
+                return (
+                    getattr(fi, "market_cap", None),
+                    getattr(fi, "last_price", None),
+                    getattr(fi, "previous_close", None),
+                )
+            try:
+                cap, price, prev = await asyncio.to_thread(_get)
+                chg = round((price - prev) / prev * 100, 2) if price and prev and prev > 0 else None
+                return {"ticker": sym, "price": price, "change_pct": chg, "market_cap": float(cap) if cap else 0}
+            except Exception:
+                return None
+
+        raw = await asyncio.gather(*[_fetch(sym) for sym in tickers[:12]])
+        valid = [r for r in raw if r and r.get("market_cap", 0) > 0]
+        top = sorted(valid, key=lambda x: x["market_cap"], reverse=True)[:10]
+
+        if not top:
+            await update.callback_query.edit_message_text(
+                f"📊 Sem dados disponíveis para {sector}.",
+                reply_markup=back_markup, parse_mode=ParseMode.HTML,
+            )
+            return
+
+        keyboard = []
+        for r in top:
+            price = r.get("price")
+            chg = r.get("change_pct")
+            price_str = f"${price:.2f}" if price else "—"
+            chg_str = ""
+            if chg is not None:
+                sign = "+" if chg >= 0 else ""
+                chg_str = f"  {sign}{chg:.2f}%"
+            label = f"{r['ticker']}  {price_str}{chg_str}"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"analyze:{r['ticker']}")])
+        keyboard.append([InlineKeyboardButton("🔙 Setores", callback_data="get_sectors")])
+        keyboard.append([InlineKeyboardButton("🏠 Menu Principal", callback_data="send_menu")])
+
+        await update.callback_query.edit_message_text(
+            f"🏢 <b>{sector}</b>\n\n<i>Clique em um ativo para analisar:</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        await update.callback_query.edit_message_text(
+            f"❌ Erro ao buscar setor: {e}",
+            reply_markup=back_markup, parse_mode=ParseMode.HTML,
+        )
 
 
 async def cb_get_gainers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _log(update.effective_chat.id, "maiores_altas")
     await update.callback_query.answer("Buscando maiores altas...")
     try:
-        text = await _build_movers_text("gainers")
+        text, markup = await _build_movers_keyboard("gainers")
     except Exception as e:
         text = f"❌ Erro ao buscar dados: {e}"
+        markup = _back_markup()
     await update.callback_query.edit_message_text(
-        text, reply_markup=_back_markup(), parse_mode=ParseMode.HTML
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
     )
 
 
@@ -920,11 +948,12 @@ async def cb_get_losers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _log(update.effective_chat.id, "maiores_baixas")
     await update.callback_query.answer("Buscando maiores baixas...")
     try:
-        text = await _build_movers_text("losers")
+        text, markup = await _build_movers_keyboard("losers")
     except Exception as e:
         text = f"❌ Erro ao buscar dados: {e}"
+        markup = _back_markup()
     await update.callback_query.edit_message_text(
-        text, reply_markup=_back_markup(), parse_mode=ParseMode.HTML
+        text, reply_markup=markup, parse_mode=ParseMode.HTML
     )
 
 
@@ -965,22 +994,8 @@ async def cb_get_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    ticker = update.message.text.strip().upper()
-    if not ticker or len(ticker) > 10 or not re.match(r"^[A-Z0-9.\-]+$", ticker):
-        await update.message.reply_text(
-            "⚠️ Digite um ticker válido (ex: AAPL, MSFT, NVDA).",
-            reply_markup=_back_markup(),
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    context.user_data["awaiting_ticker"] = False
-    _log(update.effective_chat.id, f"analisar_acao:{ticker}")
-    wait_msg = await update.message.reply_text(
-        f"🔍 Analisando <b>{ticker}</b>...", parse_mode=ParseMode.HTML
-    )
-
+async def _do_analysis(ticker: str, wait_msg) -> None:
+    """Runs the full stock analysis and edits wait_msg with the result."""
     try:
         try:
             peers = await asyncio.wait_for(get_peers(ticker), timeout=STEP_TIMEOUT)
@@ -1058,6 +1073,35 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def cb_analyze_ticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles clicks on stock buttons from gainers/losers/sector lists."""
+    ticker = update.callback_query.data.split(":", 1)[1]
+    await update.callback_query.answer(f"Analisando {ticker}...")
+    _log(update.effective_chat.id, f"analisar_acao:{ticker}")
+    wait_msg = await update.callback_query.message.reply_text(
+        f"🔍 Analisando <b>{ticker}</b>...", parse_mode=ParseMode.HTML
+    )
+    await _do_analysis(ticker, wait_msg)
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ticker = update.message.text.strip().upper()
+    if not ticker or len(ticker) > 10 or not re.match(r"^[A-Z0-9.\-]+$", ticker):
+        await update.message.reply_text(
+            "⚠️ Digite um ticker válido (ex: AAPL, MSFT, NVDA).",
+            reply_markup=_back_markup(),
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    context.user_data["awaiting_ticker"] = False
+    _log(update.effective_chat.id, f"analisar_acao:{ticker}")
+    wait_msg = await update.message.reply_text(
+        f"🔍 Analisando <b>{ticker}</b>...", parse_mode=ParseMode.HTML
+    )
+    await _do_analysis(ticker, wait_msg)
+
+
 # ---------------------------------------------------------------------------
 # FastAPI lifespan — bot startup / shutdown
 # ---------------------------------------------------------------------------
@@ -1076,6 +1120,7 @@ async def lifespan(app: FastAPI):
         _tg_app.add_handler(CallbackQueryHandler(cb_get_losers,       pattern="^get_losers$"))
         _tg_app.add_handler(CallbackQueryHandler(cb_get_sectors,      pattern="^get_sectors$"))
         _tg_app.add_handler(CallbackQueryHandler(cb_get_sector_stocks, pattern="^sector:"))
+        _tg_app.add_handler(CallbackQueryHandler(cb_analyze_ticker,   pattern="^analyze:"))
         _tg_app.add_handler(CallbackQueryHandler(cb_get_summary,      pattern="^get_summary$"))
         _tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
         await _tg_app.initialize()
