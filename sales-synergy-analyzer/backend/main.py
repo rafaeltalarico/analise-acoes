@@ -1240,10 +1240,10 @@ async def lifespan(app: FastAPI):
 
         # Scheduled channel jobs (BRT = UTC-3)
         if os.getenv("TELEGRAM_CHANNEL_ID", ""):
-            _tg_app.job_queue.run_daily(job_morning, time=dt_time(11, 0, tzinfo=timezone.utc))  # 08h BRT
-            _tg_app.job_queue.run_daily(job_midday,  time=dt_time(15, 0, tzinfo=timezone.utc))  # 12h BRT
-            _tg_app.job_queue.run_daily(job_evening, time=dt_time(20, 0, tzinfo=timezone.utc))  # 17h BRT
-            print("[canal] Jobs agendados: 08h, 12h, 17h BRT.", flush=True)
+            _tg_app.job_queue.run_daily(job_morning, time=dt_time(12, 30, tzinfo=timezone.utc))  # 09h30 BRT
+            _tg_app.job_queue.run_daily(job_midday,  time=dt_time(15,  0, tzinfo=timezone.utc))  # 12h00 BRT
+            _tg_app.job_queue.run_daily(job_evening, time=dt_time(22, 30, tzinfo=timezone.utc))  # 19h30 BRT
+            print("[canal] Jobs agendados: 09h30, 12h00, 19h30 BRT.", flush=True)
 
         await _tg_app.initialize()
         webhook_url = os.getenv("TELEGRAM_WEBHOOK_URL", "").rstrip("/")
