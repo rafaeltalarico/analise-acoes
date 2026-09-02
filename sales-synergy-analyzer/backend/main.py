@@ -6,7 +6,7 @@ import re
 import time
 import httpx
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, time as dt_time
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -1123,6 +1123,100 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------------
+# Canal Telegram — postagens agendadas
+# ---------------------------------------------------------------------------
+
+_CHANNEL_CTA = "\n\n🤖 Análise completa: @RadarDeAtivosBot"
+
+
+async def _channel_post_movers(bot) -> None:
+    channel = os.getenv("TELEGRAM_CHANNEL_ID", "")
+    if not channel:
+        return
+    try:
+        gainers, losers = await asyncio.gather(
+            asyncio.to_thread(_yf_screen_movers, "gainers", 5),
+            asyncio.to_thread(_yf_screen_movers, "losers", 5),
+        )
+        lines = ["🔥 <b>MAIORES ALTAS DO DIA</b>", ""]
+        for r in gainers or []:
+            pct = r.get("change_pct") or 0
+            sign = "+" if pct >= 0 else ""
+            lines.append(f"<b>{r['ticker']}</b>  ${r['price']:.2f}  {sign}{pct:.2f}%")
+        lines += ["", "📉 <b>MAIORES BAIXAS DO DIA</b>", ""]
+        for r in losers or []:
+            pct = r.get("change_pct") or 0
+            sign = "+" if pct >= 0 else ""
+            lines.append(f"<b>{r['ticker']}</b>  ${r['price']:.2f}  {sign}{pct:.2f}%")
+        lines.append(_CHANNEL_CTA)
+        await bot.send_message(chat_id=channel, text="\n".join(lines), parse_mode=ParseMode.HTML)
+    except Exception as e:
+        print(f"[canal] Erro ao postar movers: {e}", flush=True)
+
+
+async def _channel_post_news(bot, expected_keyword: str) -> None:
+    """Posts news if the email subject contains expected_keyword ('First Look' or 'Market Today')."""
+    channel = os.getenv("TELEGRAM_CHANNEL_ID", "")
+    if not channel:
+        return
+    try:
+        subject, body = await asyncio.to_thread(_fetch_gurufocus_body)
+        if expected_keyword not in subject:
+            print(f"[canal] Email '{subject}' não contém '{expected_keyword}' — pulando notícias.", flush=True)
+            return
+        news = _parse_stock_news(body)
+        if not news:
+            return
+        news = await translate_news_items(news)
+
+        if "First Look" in subject:
+            header = "🌅 <b>FIRST LOOK — Resumo da Manhã</b>"
+        elif "Market Today" in subject:
+            header = "🌙 <b>MARKET TODAY — Resumo do Dia</b>"
+        else:
+            header = "📰 <b>RESUMO DO DIA</b>"
+
+        items = [f"{i}. {item}" for i, item in enumerate(news, 1)]
+        chunks: list[str] = []
+        current: list[str] = []
+        for item in items:
+            candidate = f"{header}\n\n" + "\n\n".join(current + [item])
+            if len(candidate) > _MAX_MSG and current:
+                chunks.append(f"{header}\n\n" + "\n\n".join(current))
+                current = [item]
+            else:
+                current.append(item)
+        if current:
+            last = f"{header}\n\n" + "\n\n".join(current) + _CHANNEL_CTA
+            chunks.append(last)
+
+        for chunk in chunks:
+            await bot.send_message(chat_id=channel, text=chunk, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        print(f"[canal] Erro ao postar notícias: {e}", flush=True)
+
+
+async def job_morning(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """8h BRT (11h UTC): First Look + maiores altas/baixas."""
+    print("[canal] Job manhã iniciado.", flush=True)
+    await _channel_post_news(context.bot, "First Look")
+    await _channel_post_movers(context.bot)
+
+
+async def job_midday(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """12h BRT (15h UTC): maiores altas/baixas."""
+    print("[canal] Job meio-dia iniciado.", flush=True)
+    await _channel_post_movers(context.bot)
+
+
+async def job_evening(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """17h BRT (20h UTC): Market Today + maiores altas/baixas."""
+    print("[canal] Job tarde iniciado.", flush=True)
+    await _channel_post_news(context.bot, "Market Today")
+    await _channel_post_movers(context.bot)
+
+
+# ---------------------------------------------------------------------------
 # FastAPI lifespan — bot startup / shutdown
 # ---------------------------------------------------------------------------
 
@@ -1143,6 +1237,14 @@ async def lifespan(app: FastAPI):
         _tg_app.add_handler(CallbackQueryHandler(cb_analyze_ticker,   pattern="^analyze:"))
         _tg_app.add_handler(CallbackQueryHandler(cb_get_summary,      pattern="^get_summary$"))
         _tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+        # Scheduled channel jobs (BRT = UTC-3)
+        if os.getenv("TELEGRAM_CHANNEL_ID", ""):
+            _tg_app.job_queue.run_daily(job_morning, time=dt_time(11, 0, tzinfo=timezone.utc))  # 08h BRT
+            _tg_app.job_queue.run_daily(job_midday,  time=dt_time(15, 0, tzinfo=timezone.utc))  # 12h BRT
+            _tg_app.job_queue.run_daily(job_evening, time=dt_time(20, 0, tzinfo=timezone.utc))  # 17h BRT
+            print("[canal] Jobs agendados: 08h, 12h, 17h BRT.", flush=True)
+
         await _tg_app.initialize()
         webhook_url = os.getenv("TELEGRAM_WEBHOOK_URL", "").rstrip("/")
         if webhook_url:
